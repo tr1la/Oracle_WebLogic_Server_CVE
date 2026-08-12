@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<promotion>
+  <code>SUMMER2028</code>
+  <title>Ưu đãi hè 2026</title>
+  <description>Giảm 15% cho chuyến bay hạng phổ thông.</description>
+  <departure>Hà Nội</departure>
+  <departureCode>HAN</departureCode>
+  <arrival>Thành phố Hồ Chí Minh</arrival>
+  <arrivalCode>SGN</arrivalCode>
+  <seatType>ECONOMY</seatType>
+  <discountType>PERCENTAGE</discountType>
+  <discountValue>15.00</discountValue>
+  <minimumOrderAmount>1000000.00</minimumOrderAmount>
+  <maximumDiscountAmount>500000.00</maximumDiscountAmount>
+  <startDate>2026-07-10</startDate>
+  <endDate>2026-12-31</endDate>
+  <usageLimit>1000</usageLimit>
+  <usedCount>0</usedCount>
+  <active>true</active>
+  <pictureLink>https://images.unsplash.com/photo-1436491865332-7a61a109cc05</pictureLink>
+  <terms>Áp dụng một lần cho mỗi đơn hàng.</terms>
+</promotion>

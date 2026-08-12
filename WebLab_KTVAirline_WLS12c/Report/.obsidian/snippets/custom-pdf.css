@@ -1,0 +1,140 @@
+/* ========================================================== */
+/* CSS XỬ LÝ CẤU TRÚC PDF (KHÔNG CAN THIỆP MÀU SẮC THEME CODE)*/
+/* ========================================================== */
+@media print {
+
+  /* --- BỘ MÀU CHUẨN TỪ ẢNH CỦA BẠN (DÀNH CHO PDF & READING VIEW) --- */
+
+  /* 1. Nền đen nhạt và Text trắng xám cơ bản */
+  .markdown-rendered pre,
+  .markdown-rendered code {
+    color: #2d2d2d !important;
+  }
+
+  /* 2. Vàng nhạt (Tên Class, Kiểu dữ liệu: String, Path, Integer) */
+  .markdown-rendered .token.class-name,
+  .markdown-rendered .token.builtin {
+    color: #e5c07b !important;
+  }
+
+  /* 3. Xanh lơ / Cyan (Biến số, Tham số, Hằng số: qrContent, filename) */
+  .markdown-rendered .token.variable,
+  .markdown-rendered .token.property,
+  .markdown-rendered .token.constant {
+    color: #61afef !important;
+  }
+
+  /* 4. Đỏ san hô (Toán tử: =, ==, ||, ?, :, +) */
+  .markdown-rendered .token.operator {
+    color: #e06c75 !important;
+  }
+
+  /* 5. Tím nhạt (Từ khóa: public, return, new, null) */
+  .markdown-rendered .token.keyword,
+  .markdown-rendered .token.boolean {
+    color: #c678dd !important;
+  }
+
+  /* 6. Xanh rêu (Chuỗi / String: "anonymous-member", ".svg") */
+  .markdown-rendered .token.string {
+    color: #98c379 !important;
+  }
+
+  /* 7. Trắng / Xám sáng (Tên hàm: renderQrCode, isBlank, resolve) */
+  .markdown-rendered .token.function {
+    color: #61afef !important;
+  }
+
+  /* 8. Xám tối (Comment) */
+  .markdown-rendered .token.comment {
+    color: #5c6370 !important;
+    font-style: italic !important;
+  }
+
+  /* 9. Xám nhạt cho Dấu câu ({, }, (, ), ;, .) */
+  .markdown-rendered .token.punctuation {
+    color: #2e2e2e !important;
+  }
+
+  /* 1. Trị dứt điểm lỗi tràn lề và cắt xén Code Block */
+  pre {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 2. Tối ưu hiển thị BẢNG (TABLE) chuyên nghiệp */
+  table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    page-break-inside: auto !important;
+    border-collapse: collapse !important;
+    /* Gộp các đường viền lại cho sắc nét */
+    margin: 16px 0 !important;
+    /* Tạo khoảng không trên dưới bảng */
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  /* Hiệu ứng ngựa vằn (Zebra Striping) giúp dễ đọc các bảng liệt kê dài */
+  tr:nth-child(even) {
+    background-color: #f8f9fa !important;
+  }
+
+  th,
+  td {
+    word-break: break-word !important;
+    white-space: pre-wrap !important;
+    border: 1px solid #d1d5db !important;
+    /* Cạnh viền màu xám tinh tế */
+    padding: 10px 12px !important;
+    /* Tạo không gian cho chữ dễ thở */
+    text-align: left !important;
+  }
+
+  th {
+    background-color: #e5e7eb !important;
+    /* Đổ màu nền xám cho hàng tiêu đề */
+    font-weight: 600 !important;
+    /* In đậm tiêu đề */
+    color: #111111 !important;
+  }
+
+  /* 3. Quản lý ngắt trang thông minh (Chống mồ côi tiêu đề) */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 4. Tự động thu nhỏ BIỂU ĐỒ (Mermaid) và HÌNH ẢNH quá khổ */
+  .mermaid {
+    display: block !important;
+    /* TUYỆT ĐỐI KHÔNG DÙNG FLEX ĐỂ BẢO TOÀN LỆNH NGẮT TRANG */
+    text-align: center !important;
+    /* Căn giữa an toàn thay cho flex */
+    margin: 20px 0 !important;
+    page-break-inside: avoid !important;
+    /* Cú pháp cũ cho độ tương thích */
+    break-inside: avoid !important;
+    /* Cú pháp mới siêu mạnh để ép Chromium ngắt trang */
+  }
+
+  .mermaid svg,
+  img {
+    max-width: 100% !important;
+    max-height: 85vh !important;
+    /* Chiếm tối đa 85% chiều cao của không gian in khả dụng, tự động trừ đi lề Default */
+    width: auto !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "theme": "obsidian",
+  "cssTheme": "Minimal",
+  "enabledCssSnippets": [
+    "custom-pdf"
+  ]
+}

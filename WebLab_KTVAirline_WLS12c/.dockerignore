@@ -1,0 +1,11 @@
+.git
+.idea
+.vscode
+.DS_Store
+.env
+*.pem
+target
+uploads
+imports
+frontend
+*.iml

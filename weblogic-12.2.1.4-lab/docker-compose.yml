@@ -1,0 +1,75 @@
+name: weblogic-12214-lab
+
+x-app-environment: &app-environment
+  SPRING_DATASOURCE_URL: "jdbc:mysql://host.docker.internal:3307/ktvdb?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh"
+  SPRING_DATASOURCE_USERNAME: root
+  SPRING_DATASOURCE_PASSWORD: "123"
+  APP_DATA_DIR: /u01/oracle/user_projects/domains/base_domain/lab-data
+  APP_UPLOAD_DIR: /u01/oracle/user_projects/domains/base_domain/lab-data/uploads
+  APP_PROMOTION_IMPORT_DIR: /u01/oracle/user_projects/domains/base_domain/lab-data/imports/promotions
+  APP_PROFILE_THEME_CUSTOM_DIR: /u01/oracle/user_projects/domains/base_domain/lab-data/custom_themes
+  APP_DYNAMIC_UI_COMPONENT_DIR: /u01/oracle/user_projects/domains/base_domain/lab-data/templates/components
+  JWT_PRIVATE_KEY_FILE: /u01/oracle/user_projects/domains/base_domain/lab-data/secrets/jwt-private.pem
+  JWT_PUBLIC_KEY_FILE: /u01/oracle/user_projects/domains/base_domain/lab-data/secrets/jwt-public.pem
+  APP_PUBLIC_BACKEND_URL: http://127.0.0.1:7003/ktv-airline
+
+services:
+  weblogic:
+    image: container-registry.oracle.com/middleware/weblogic:12.2.1.4
+    platform: linux/amd64
+    container_name: wls12214
+    pull_policy: missing
+    environment:
+      <<: *app-environment
+      PRODUCTION_MODE: prod
+      ADMINISTRATION_PORT_ENABLED: "false"
+    ports:
+      - "127.0.0.1:7001:7001"
+    volumes:
+      - ./properties:/u01/oracle/properties
+      - ./user_projects:/u01/oracle/user_projects
+      - ../WebLab_KTVAirline_WLS12c/target:/u01/oracle/deployments:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -s --fail http://127.0.0.1:7001/console/ >/dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  server0:
+    image: container-registry.oracle.com/middleware/weblogic:12.2.1.4
+    platform: linux/amd64
+    container_name: wls12214-server0
+    pull_policy: missing
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - exec /u01/oracle/user_projects/domains/base_domain/bin/startManagedWebLogic.sh Server-0 http://weblogic:7001
+    environment:
+      <<: *app-environment
+    depends_on:
+      weblogic:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:7003:7003"
+    volumes:
+      - ./user_projects:/u01/oracle/user_projects
+      - ../WebLab_KTVAirline_WLS12c/target:/u01/oracle/deployments:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        # Server-0 has an explicit Listen Address, so it is not bound to the
+        # container loopback interface. Validate the deployed application via
+        # the Compose service hostname instead.
+        - curl -s --fail http://server0:7003/ktv-airline/v3/api-docs >/dev/null || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped

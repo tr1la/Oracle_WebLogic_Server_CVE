@@ -1,0 +1,9 @@
+/frontend/node_modules
+/target/
+/.m2/
+*.class
+/.idea
+.env
+*.pem
+/uploads
+/imports
