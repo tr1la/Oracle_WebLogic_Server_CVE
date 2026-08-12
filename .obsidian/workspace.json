@@ -194,13 +194,24 @@
               "icon": "lucide-list",
               "title": "Outline"
             }
+          },
+          {
+            "id": "58042996e92e8509",
+            "type": "leaf",
+            "state": {
+              "type": "git-view",
+              "state": {},
+              "icon": "git-pull-request",
+              "title": "Source Control"
+            }
           }
         ],
-        "currentTab": 4
+        "currentTab": 5
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 300,
+    "collapsed": true
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -216,7 +227,7 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "604109c50a0bb58a",
+  "active": "be00927e0bd36a12",
   "lastOpenFiles": [
     "oracle-weblogic-critical-cves-2023-2026.md",
     "oracle-weblogic-analysis-poc-2020-2026.md",
