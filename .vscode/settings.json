@@ -1,0 +1,27 @@
+{
+  "java.project.sourcePaths": ["src/main/java"],
+  "java.project.outputPath": "bin",
+  "java.project.referencedLibraries": [
+    "weblogic-12.2.1.4-lab/wl-jars/weblogic.jar",
+    "weblogic-12.2.1.4-lab/wl-jars/wlserver-modules/**/*.jar",
+    "weblogic-12.2.1.4-lab/wl-jars/oc-thirdparty/**/*.jar"
+  ],
+  "java.contentProvider.preferred": "fernflower",
+  "java.debug.settings.hotCodeReplace": "never",
+  "java.debug.settings.showHex": true,
+  "java.debug.settings.showStaticVariables": true,
+  "java.debug.settings.showQualifiedNames": true,
+  "java.debug.settings.enableRunDebugCodeLens": false,
+  "java.debug.settings.stepping.skipClasses": [
+    "$JDK",
+    "java.*",
+    "sun.*",
+    "javax.*",
+    "com.sun.*",
+    "jdk.*",
+    "org.apache.*"
+  ],
+  "java.debug.settings.stepping.skipSynthetics": true,
+  "java.debug.settings.stepping.skipStaticInitializers": false,
+  "java.debug.settings.stepping.skipConstructors": false
+}
