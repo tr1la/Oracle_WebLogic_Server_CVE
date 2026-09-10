@@ -5,7 +5,8 @@
     "weblogic-12.2.1.4-lab/wl-jars/weblogic.jar",
     "weblogic-12.2.1.4-lab/wl-jars/wlserver-modules/**/*.jar",
     "weblogic-12.2.1.4-lab/wl-jars/oc-thirdparty/**/*.jar",
-    "weblogic-12.2.1.4-lab/wl-jars/consoleapp/**/*.jar"
+    "weblogic-12.2.1.4-lab/wl-jars/consoleapp/**/*.jar",
+    "weblogic-12.2.1.4-lab/wl-jars/coherence-lib/**/*.jar"
   ],
   "java.contentProvider.preferred": "fernflower",
   "java.debug.settings.hotCodeReplace": "never",
