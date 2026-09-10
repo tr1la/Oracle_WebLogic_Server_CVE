@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Attach WLS 12.2.1.4 (AdminServer :7001)",
+      "request": "attach",
+      "hostName": "127.0.0.1",
+      "port": 8453
+    },
+    {
+      "type": "java",
+      "name": "Attach WLS 12.2.1.4 (Server-0 :7003)",
+      "request": "attach",
+      "hostName": "127.0.0.1",
+      "port": 8454
+    }
+  ]
+}
