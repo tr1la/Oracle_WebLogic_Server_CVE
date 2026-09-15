@@ -25,6 +25,7 @@ services:
       ADMINISTRATION_PORT_ENABLED: "false"
       debugFlag: "true"
       DEBUG_PORT: "8453"
+      JAVA_OPTIONS: "-Dcom.sun.jndi.ldap.object.trustURLCodebase=true -Dcom.sun.jndi.rmi.object.trustURLCodebase=true"
     ports:
       - "127.0.0.1:7001:7001"
       - "127.0.0.1:8453:8453"
