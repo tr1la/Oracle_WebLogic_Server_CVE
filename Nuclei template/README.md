@@ -1,0 +1,93 @@
+# Nuclei Templates — Oracle WebLogic Server CVEs (2020–2026)
+
+Templates for the WebLogic CVEs in [`../oracle-weblogic-analysis-poc-2020-2026.md`](../oracle-weblogic-analysis-poc-2020-2026.md)
+that did **not** already reference a public Nuclei template. For the 5 CVEs that
+already ship an official template, no file was written here — use the upstream
+one (links in the table below).
+
+## Detection methodology (read this first)
+
+Most WebLogic CVEs here are **T3/IIOP unsafe-deserialization or JNDI-injection
+RCE**. A true exploit requires sending a Java serialized gadget / JNDI payload
+over a binary protocol — this cannot be expressed safely or reliably in a YAML
+template, and running it against live hosts is destructive. So these templates
+use the standard non-destructive approach:
+
+- **T3 version-fingerprint (`*.yaml`, protocol `tcp`):** probe T3 (7001) and
+  T3S (7002), confirm WebLogic via the `HELO` handshake, extract the reported
+  version, and flag hosts whose **base version** is within the affected range
+  for that CVE.
+  - ⚠️ The T3 handshake reveals only the **base release**, not the applied
+    Critical Patch Update. A match = **potential exposure**, not confirmed
+    vulnerability. Always confirm the host's patch level.
+- **HTTP active/heuristic:** `CVE-2021-2109` (console attack-surface + version)
+  and `CVE-2026-21962` (proxy-plugin normalization bypass — heuristic because
+  the upstream PoC is redacted).
+
+For **confirmed exploitation** of the two where an official active (OAST-based)
+template exists, prefer upstream:
+- `CVE-2023-21839` → `nuclei-templates/javascript/cves/2023/CVE-2023-21839.yaml`
+- `CVE-2021-2135` → `nuclei-templates/http/cves/2021/CVE-2021-2135.yaml`
+
+## Coverage map
+
+| CVE | Vuln type | Template status | File / source | Detection type |
+|-----|-----------|-----------------|---------------|----------------|
+| CVE-2020-2551  | IIOP deser RCE            | **created** | `CVE-2020-2551.yaml`  | T3 version |
+| CVE-2020-2555  | Coherence T3 deser RCE    | **created** | `CVE-2020-2555.yaml`  | T3 version |
+| CVE-2020-2883  | T3/IIOP deser RCE         | **created** | `CVE-2020-2883.yaml`  | T3 version |
+| CVE-2020-14644 | T3/IIOP class-load RCE    | **created** | `CVE-2020-14644.yaml` | T3 version |
+| CVE-2020-14645 | T3/IIOP JNDI deser RCE    | **created** | `CVE-2020-14645.yaml` | T3 version |
+| CVE-2020-14825 | Coherence T3/IIOP RCE     | **created** | `CVE-2020-14825.yaml` | T3 version |
+| CVE-2020-14841 | IIOP JNDI deser RCE       | **created** | `CVE-2020-14841.yaml` | T3 version |
+| CVE-2020-14756 | Coherence T3/IIOP RCE     | **created** | `CVE-2020-14756.yaml` | T3 version |
+| CVE-2020-14882 | Console auth bypass       | _upstream_  | `http/cves/2020/CVE-2020-14882.yaml` | active HTTP |
+| CVE-2020-14883 | Console code injection    | _upstream_  | `http/cves/2020/CVE-2020-14883.yaml` | active HTTP |
+| CVE-2020-14750 | Console auth bypass       | _upstream_  | `http/cves/2020/CVE-2020-14750.yaml` | active HTTP |
+| CVE-2021-2109  | Console JNDI (auth) RCE   | **created** | `CVE-2021-2109.yaml`  | HTTP console + version |
+| CVE-2021-2135  | T3/IIOP deser RCE         | _upstream_  | `http/cves/2021/CVE-2021-2135.yaml` | active OAST |
+| CVE-2021-2136  | IIOP 2nd-order deser RCE  | **created** | `CVE-2021-2136.yaml`  | T3 version |
+| CVE-2021-2211  | T3/IIOP XXE info leak     | **created** | `CVE-2021-2211.yaml`  | T3 version |
+| CVE-2021-2394  | T3/IIOP deser RCE         | **created** | `CVE-2021-2394.yaml`  | T3 version |
+| CVE-2022-21371 | LFI / path traversal      | _upstream_  | `http/cves/2022/CVE-2022-21371.yaml` | active HTTP |
+| CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
+| CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
+| CVE-2024-20931 | T3/IIOP JNDI RCE          | **created** | `CVE-2024-20931.yaml` | T3 version |
+| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created** | `CVE-2024-21006.yaml` | T3 version |
+| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created** | `CVE-2024-21182.yaml` | T3 version |
+| CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
+| CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
+
+**19 templates created**; 5 already covered upstream.
+
+## Usage
+
+Validate the templates:
+
+```bash
+nuclei -validate -t "Nuclei template/"
+```
+
+Run a single CVE against a target (include the T3 port):
+
+```bash
+nuclei -t "Nuclei template/CVE-2023-21839.yaml" -u target:7001
+```
+
+Run the whole folder against a list:
+
+```bash
+nuclei -t "Nuclei template/" -l targets.txt
+```
+
+The HTTP heuristic (`CVE-2026-21962`) benefits from interactsh/OAST and a known
+protected path — adjust `path`/matchers once the authoritative PoC is public.
+
+## Caveats & disclaimer
+
+- T3 templates report **base-version exposure**, which can be a false positive on
+  fully patched hosts (same base version, patched internals). Confirm CPU level.
+- `CVE-2026-21962` is a **heuristic** (PoC redacted upstream) and
+  `CVE-2026-60206` relies on T3 version only (public SAML PoCs are unverified —
+  one uses a `placeholder_signature`).
+- Use only against systems you are authorized to test.
