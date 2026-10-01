@@ -29,6 +29,42 @@ template exists, prefer upstream:
 - `CVE-2023-21839` → `nuclei-templates/javascript/cves/2023/CVE-2023-21839.yaml`
 - `CVE-2021-2135` → `nuclei-templates/http/cves/2021/CVE-2021-2135.yaml`
 
+## Active OAST template — CVE-2024-20931 (lab-verified)
+
+`CVE-2024-20931-active-oast.yaml` is a **real exploit** template (nuclei
+`javascript:` protocol), not version detection. It was **verified against a live
+WebLogic 12.2.1.4.0 lab** — nuclei reported `[CVE-2024-20931] [javascript]
+[critical]` via an interactsh **DNS callback**.
+
+How it was built (reproducible method for the other T3/IIOP JNDI CVEs):
+
+1. **Capture** the real T3 `rebind`+`lookup` byte stream by running the public
+   PoC (`GlassyAmadeus/CVE-2024-20931`) against the lab under an `LD_PRELOAD`
+   `read`/`write` shim (`sockdump.c`). A transparent TCP proxy does **not** work
+   — WebLogic's RJVM handshake validates peer addresses — and the container had
+   no `strace`/`tcpdump` (`NET_RAW` dropped), so the in-process `LD_PRELOAD`
+   shim (needs only `gcc`) was the enabler.
+2. **Replay** that stream in the template, substituting the attacker JNDI host
+   with `{{interactsh-url}}` using a **fixed 96-byte-wide** marker, so every T3
+   and Java-serialization length field stays valid with zero length math.
+3. Two nuclei-specific details that matter:
+   - the exploit is **stateful but fire-and-forget**, so the whole stream is
+     replayed on one socket; and
+   - the template must **hold the connection open** after sending (`RecvFull`)
+     so the server completes the lookup→callback before `Close()` — otherwise
+     nuclei closes too early and nothing fires.
+
+**Signing:** nuclei refuses unsigned `javascript:` templates. Sign once with your
+own key:
+
+```bash
+nuclei -sign -t "Nuclei template/CVE-2024-20931-active-oast.yaml"
+nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
+```
+
+Caveat: the replayed client-identity frame is from a 12.2.1.4.0 client; verified
+on 12.2.1.4.0, untested on 14.1.1.0.0.
+
 ## Coverage map
 
 | CVE | Vuln type | Template status | File / source | Detection type |
@@ -52,7 +88,7 @@ template exists, prefer upstream:
 | CVE-2022-21371 | LFI / path traversal      | _upstream_  | `http/cves/2022/CVE-2022-21371.yaml` | active HTTP |
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
 | CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
-| CVE-2024-20931 | T3/IIOP JNDI RCE          | **created** | `CVE-2024-20931.yaml` | T3 version |
+| CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` (active, signed) + `CVE-2024-20931.yaml` (version) | **active OAST** |
 | CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created** | `CVE-2024-21006.yaml` | T3 version |
 | CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created** | `CVE-2024-21182.yaml` | T3 version |
 | CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
