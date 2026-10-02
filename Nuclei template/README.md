@@ -80,6 +80,29 @@ If future WebLogic releases ever change this UID, add a `HELO`-based branch
 needed for other versions take minutes with the `sockdump.c` + Python replay
 pipeline documented in `PoC-active-lab-verified/`.
 
+### Why only 20931 (and not 21006 / 21182) has an active OAST template
+
+All three CVEs come from the same WebLogic JNDI family and share the
+capture→replay pipeline. Only CVE-2024-20931 is reachable by a nuclei-style
+scanner, because of the **gadget class's interface**:
+
+| CVE | Gadget | Class hierarchy | Server-side resolve on lookup? |
+|-----|--------|-----------------|--------------------------------|
+| 2024-20931 | `weblogic.deployment.jms.ForeignOpaqueReference` | implements **`weblogic.jndi.OpaqueReference`** directly | **YES** → server calls `getReferent()` → DNS → OAST hit |
+| 2024-21182 | `weblogic.ejb.container.internal.AggregatableOpaqueReference` | implements `weblogic.jndi.ClassTypeOpaqueReference` (extends `OpaqueReference`) + `AggregatableInternal` | **NO** → cluster-aware; `writeObject` embeds client's local JVMID; server treats "foreign" serverIDs as *do-not-resolve* and ships the Reference back for the **client** to resolve |
+| 2024-21006 | `weblogic.application.naming.MessageDestinationReference` | extends `javax.naming.Reference` (plain JNDI Reference, no WebLogic opaque marker) | **NO** → server returns the Reference bytes untouched; the chain fires in whichever JNDI client later looks it up |
+
+Lab-verified (12.2.1.4.0): the Java PoCs for both 21182 and 21006 **do fire** a
+JRMI/LDAP callback — but the callback comes from the **Java client's own
+`NamingManager`**, not the WLS server. On capture, the server's lookup response
+contains the Reference verbatim (`host.docker.internal:18099/A…` echoed back
+inside the serialized blob); no DNS is issued before that response is sent.
+Hence a nuclei scanner (byte pusher, not a JNDI client) cannot produce an OAST
+interaction, so these two keep version-detect templates only. The CVE primitive
+itself is still real — it is the "attacker binds a poisoned reference; a
+legitimate victim later looks it up" vector — just not scanner-detectable from
+the outside the way 20931 is.
+
 ## 3. Coverage map
 
 | CVE | Vuln type | Template status | File / source | Detection type |
@@ -104,8 +127,8 @@ pipeline documented in `PoC-active-lab-verified/`.
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
 | CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
 | CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` (active, signed) + `CVE-2024-20931.yaml` (version) | **active OAST** |
-| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created** | `CVE-2024-21006.yaml` | T3 version |
-| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created** | `CVE-2024-21182.yaml` | T3 version |
+| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created** (client-side chain — see §2.1) | `CVE-2024-21006.yaml` | T3 version |
+| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created** (client-side chain — see §2.1) | `CVE-2024-21182.yaml` | T3 version |
 | CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 

@@ -11,6 +11,9 @@ Result of the "port-from-PoC + verify-in-lab" effort for the T3/IIOP JNDI CVEs.
 | CVE-2023-21839 active nuclei template (upstream) | **MATCHED** on Lab A (interactsh DNS callback) |
 | CVE-2024-20931 exploit — Java PoC | **FIRED** on Lab A — server JRMP/RMI callback (`0x4a524d49` = `JRMI`) |
 | CVE-2024-20931 active nuclei template (`../Nuclei template/CVE-2024-20931-active-oast.yaml`) | **MATCHED on both Lab A AND Lab B** with identical bytes — see `../Nuclei template/README.md` |
+| CVE-2024-21006 exploit — Java PoC | **FIRED** on Lab A (via client-side chain) |
+| CVE-2024-21182 exploit — Java PoC | **FIRED** on Lab A (via client-side chain) |
+| CVE-2024-21006 / 21182 **nuclei active OAST** | **NOT achievable** — exploit chain fires on the *client* that calls lookup, not on the WLS server. The capture→replay pipeline tested here cannot produce an OAST interaction. See §6. |
 
 CVE-2024-20931 proof (listener output, Lab A):
 
@@ -101,3 +104,33 @@ serializing compatibly across releases). Hence replaying the 12.2.1.4 stream
 against 14.1.1 works unchanged (empirically confirmed above). If a future
 version ever changes the UID, add a `HELO`-based branch — the handshake reports
 the server version precisely.
+
+## 6. Why 21006 / 21182 could NOT be turned into nuclei active-OAST templates
+
+The same pipeline was tried on both CVEs; both Java PoCs fire a callback on Lab A,
+and both captures replay cleanly on the wire — but **no OAST interaction is
+produced**. Root cause is the gadget class, not the pipeline.
+
+WebLogic's server-side `NamingNode.lookup()` only calls `.getReferent()` for
+objects it treats as resolve-eagerly. The three gadgets here differ:
+
+| CVE | Gadget | Implements | Server resolves on lookup? |
+|-----|--------|-----------|----------------------------|
+| 2024-20931 | `weblogic.deployment.jms.ForeignOpaqueReference` | **`weblogic.jndi.OpaqueReference`** directly | **YES** → server dials attacker URL → OAST hit |
+| 2024-21182 | `weblogic.ejb.container.internal.AggregatableOpaqueReference` | `weblogic.jndi.ClassTypeOpaqueReference` + `AggregatableInternal` | **NO** → cluster-aware; `writeObject` embeds the writer's local JVMID; server treats foreign JVMIDs as *do-not-resolve* and ships the Reference back for the client to resolve |
+| 2024-21006 | `weblogic.application.naming.MessageDestinationReference` | plain `javax.naming.Reference` subclass | **NO** → server returns the Reference verbatim |
+
+Direct evidence from Lab A: when the real Java PoC for 21182 or 21006 fires a
+callback, inspecting the server's lookup response shows the attacker URL (e.g.
+`rmi://host.docker.internal:18099/A...`) **echoed back inside the response
+blob** — i.e. the server never dialed it. The DNS/JRMI call happens *after*
+the Java client's `NamingManager.getObjectInstance()` processes the returned
+Reference. A nuclei scanner is a byte pusher, not a JNDI client, so it cannot
+reproduce that step. The CVE primitive itself is still real — it is the
+"attacker binds a poisoned reference → a legitimate victim later looks it up and
+is owned" vector — just not scanner-detectable from the outside like 20931 is.
+
+What is kept in `../Nuclei template/`:
+
+- `CVE-2024-20931-active-oast.yaml` — active OAST (verified both labs).
+- `CVE-2024-21006.yaml`, `CVE-2024-21182.yaml` — T3-handshake version-detect only.
