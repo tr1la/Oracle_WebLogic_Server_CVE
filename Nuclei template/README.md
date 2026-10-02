@@ -62,8 +62,23 @@ nuclei -sign -t "Nuclei template/CVE-2024-20931-active-oast.yaml"
 nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
 ```
 
-Caveat: the replayed client-identity frame is from a 12.2.1.4.0 client; verified
-on 12.2.1.4.0, untested on 14.1.1.0.0.
+**Version coverage:** verified on **both WebLogic 12.2.1.4.0 and 14.1.1.0.0**
+with the identical byte stream (one `javascript:` template, no version branching).
+
+Why it is version-independent despite being a byte-replay: the only
+version-sensitive bytes in a Java serialization stream are typically the class
+descriptor's `serialVersionUID` and field layout. Decompiling
+`weblogic.deployment.jms.ForeignOpaqueReference` from `weblogic.jar` shows UID is
+a **declared constant** (`4404892619941441265L` = `0x3d21527fed596ef1`), and that
+exact value is what we captured on the wire — Oracle hard-codes it so Foreign
+JMS Server configurations serialize compatibly across versions. The server
+re-uses its own class definition on deserialize, so field layout differences are
+tolerated when UIDs match.
+
+If future WebLogic releases ever change this UID, add a `HELO`-based branch
+(the T3 handshake reports the server version precisely); the replay captures
+needed for other versions take minutes with the `sockdump.c` + Python replay
+pipeline documented in `PoC-active-lab-verified/`.
 
 ## 3. Coverage map
 
