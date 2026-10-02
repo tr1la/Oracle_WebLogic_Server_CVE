@@ -5,7 +5,7 @@ that did **not** already reference a public Nuclei template. For the 5 CVEs that
 already ship an official template, no file was written here — use the upstream
 one (links in the table below).
 
-## Detection methodology (read this first)
+## 1. Detection methodology (read this first)
 
 Most WebLogic CVEs here are **T3/IIOP unsafe-deserialization or JNDI-injection
 RCE**. A true exploit requires sending a Java serialized gadget / JNDI payload
@@ -29,7 +29,7 @@ template exists, prefer upstream:
 - `CVE-2023-21839` → `nuclei-templates/javascript/cves/2023/CVE-2023-21839.yaml`
 - `CVE-2021-2135` → `nuclei-templates/http/cves/2021/CVE-2021-2135.yaml`
 
-## Active OAST template — CVE-2024-20931 (lab-verified)
+## 2. Active OAST template — CVE-2024-20931 (lab-verified)
 
 `CVE-2024-20931-active-oast.yaml` is a **real exploit** template (nuclei
 `javascript:` protocol), not version detection. It was **verified against a live
@@ -65,7 +65,7 @@ nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
 Caveat: the replayed client-identity frame is from a 12.2.1.4.0 client; verified
 on 12.2.1.4.0, untested on 14.1.1.0.0.
 
-## Coverage map
+## 3. Coverage map
 
 | CVE | Vuln type | Template status | File / source | Detection type |
 |-----|-----------|-----------------|---------------|----------------|
@@ -96,7 +96,7 @@ on 12.2.1.4.0, untested on 14.1.1.0.0.
 
 **19 templates created**; 5 already covered upstream.
 
-## Usage
+## 4. Usage
 
 Validate the templates:
 
@@ -119,7 +119,7 @@ nuclei -t "Nuclei template/" -l targets.txt
 The HTTP heuristic (`CVE-2026-21962`) benefits from interactsh/OAST and a known
 protected path — adjust `path`/matchers once the authoritative PoC is public.
 
-## Caveats & disclaimer
+## 5. Caveats & disclaimer
 
 - T3 templates report **base-version exposure**, which can be a false positive on
   fully patched hosts (same base version, patched internals). Confirm CPU level.
