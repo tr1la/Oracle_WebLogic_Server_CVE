@@ -2,7 +2,7 @@
 
 Result of the "port-from-PoC + verify-in-lab" effort for the T3/IIOP JNDI CVEs.
 
-## What was verified ✅
+## 1. What was verified ✅
 
 | Item | Status |
 |------|--------|
@@ -17,12 +17,12 @@ CVE-2024-20931 proof (listener output):
     first-bytes: 4a524d4900024b   (JRMI => the WebLogic server dialed out)
 ```
 
-## Files
+## 2. Files
 
 - `src/com/supeream/CVE_2024_20931.java` — parameterized PoC (target + attacker JNDI URL).
 - `verify-listener.py` — OAST substitute: logs the server's callback (no internet needed).
 
-## How to run (reproduces the verification)
+## 3. How to run (reproduces the verification)
 
 Compile + run **inside the WebLogic container** (it has JDK 8 + `weblogic.jar`; a normal client host works too if it has them):
 
@@ -46,7 +46,7 @@ docker exec wls12214 bash -lc 'cd /tmp/poc && java -cp out:$ORACLE_HOME/wlserver
 A `CALLBACK from ...` line = vulnerable. Against a real target use an interactsh/Burst
 Collaborator host instead of `host.docker.internal:18099`.
 
-## Why there is no verified *nuclei* template for 20931/21006/21182
+## 4. Why there is no verified *nuclei* template for 20931/21006/21182
 
 These are **JNDI injection** bugs: they need a stateful T3 **`rebind` + `lookup`** RMI
 exchange (store the malicious `ForeignOpaqueReference`, then look it up). That is
