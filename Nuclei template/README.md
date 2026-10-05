@@ -149,7 +149,7 @@ upstream templates).
 | CVE-2021-2394  | T3/IIOP deser RCE         | **created** | `CVE-2021-2394.yaml`  | T3 version |
 | CVE-2022-21371 | LFI / path traversal      | _upstream_  | `http/cves/2022/CVE-2022-21371.yaml` | active HTTP |
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **upstream active (local copy)** | `CVE-2023-21839-active-oast.yaml` | active OAST |
-| CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
+| CVE-2023-21931 | T3/IIOP JNDI (LinkRef)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2023-21931-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
 | CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` | **active OAST** |
 | CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21006-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
 | CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21182-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
