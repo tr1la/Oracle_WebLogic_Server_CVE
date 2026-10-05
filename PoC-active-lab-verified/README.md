@@ -150,19 +150,33 @@ Results on the lab (`-interactions-cooldown-period 30`):
 | Template | WebLogic 12.2.1.4.0 | WebLogic 14.1.1.0-dev-11 |
 |----------|----------------------|---------------------------|
 | `CVE-2024-20931-active-oast.yaml` (T3) | ✅ matched | ✅ matched (same bytes — UID is a declared constant) |
-| `CVE-2024-21006-active-oast.yaml` (IIOP) | ✅ 5/5 matched | ❌ gadget `TRMI` class hash differs — needs 14.1.1 capture |
-| `CVE-2024-21182-active-oast.yaml` (IIOP) | ✅ 5/5 matched | ❌ same as above |
+| `CVE-2024-21006-active-oast.yaml` (IIOP, version-branching) | ✅ 3/3 matched | ✅ 3/3 matched |
+| `CVE-2024-21182-active-oast.yaml` (IIOP, version-branching) | ✅ 2/3 matched (1 interactsh miss) | ✅ 3/3 matched |
 
-Why 14.1.1 fails for 21006/21182: byte-diffing the 12.2.1.4 and 14.1.1 Java
-captures shows a 16-byte region (~offset 1119 in the c2s stream) that is
-version-specific. That region decodes as an ASCII hex pair embedded inside the
-TRMI class identifier `TRMI:weblogic.application.naming.MessageDestinationReference:<HASH1>:<HASH2>`
-— the Java-to-IDL stub signature for the class. WebLogic 14.1.1 appears to
-build a different stub, so the 12.2.1.4 capture is rejected. The proper fix is
-a 14.1.1 capture + HELO-version-based branching (same shape as PD's
-`if (ver === '12') { ... } else if (ver === '14') { ... }`); kept as a
-follow-up because 20931's T3-based template already covers 14.1.1 and the
-version-detect templates still flag affected hosts.
+The cross-version coverage was achieved by embedding **two captured byte
+streams** (one per major WLS version) in each IIOP template and probing the T3
+HELO line first to pick the right one — the same `if (ver === '12') ... else
+if (ver === '14') ...` structure PD uses in the official CVE-2023-21839
+template, applied to the full `rebind_any` + `resolve_any` body rather than
+only a BEA flag byte.
+
+Why two captures are needed at all (gadget chain is the SAME on both versions,
+but the wire identifier differs): byte-diffing the 12.2.1.4 and 14.1.1 Java
+captures shows a 16-byte region (~offset 1119 in c2s) that decodes as an
+ASCII hex pair embedded inside the TRMI class identifier
+`TRMI:weblogic.application.naming.MessageDestinationReference:<HASH1>:<HASH2>`
+— the Java-to-IDL stub signature. `rmic` recomputes these hashes on every
+WebLogic rebuild from the class's public-method list + its superclass chain,
+so the 12.2.1.4 identifier is rejected by the 14.1.1 server's stub validator
+(and vice versa). The fields, serialVersionUID, and `.lookupMessageDestination`
+logic are all unchanged — only the stub identifier differs.
+
+Why PD's CVE-2023-21839 template didn't need this gymnastics: its gadget
+`ForeignOpaqueReference` is a leaf data-holder class whose stub identifier
+`TRMI:weblogic.jndi.internal.ForeignOpaqueReference:D237D91CB2F0F68A:3D21527FED596EF1`
+is stable across 12.2.1.3 / 12.2.1.4 / 14.1.1 (no public remote methods, no
+WebLogic-internal base class that Oracle refactors). It only had to branch on
+the 1-byte BEA version flag (`0x2c` ↔ `0x2e`), not on the full gadget body.
 
 What is kept in `../Nuclei template/`:
 

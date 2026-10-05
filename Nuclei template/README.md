@@ -111,15 +111,23 @@ value — but one extra byte-level nuance applies: WebLogic 14.1.1 uses `0x2e`
 instead of `0x2c` as the BEA version flag, so the template auto-detects the
 flag from the LocateReply and rewrites `4245412c` → `4245412e` in the body.
 
-**Version coverage caveat for 21006/21182 IIOP templates:** both are verified
-5/5 against WebLogic 12.2.1.4.0 with `-interactions-cooldown-period 30`. On
-14.1.1.0.0 the TRMI class signature for the gadget (the `HASH1:HASH2` suffix in
-`TRMI:…MessageDestinationReference:…`) differs from 12.2.1.4.0 — a diff of
-captured bytes between the two labs shows a 16-byte region at offset ~1119 that
-is version-specific. A proper 14.1.1 template needs a 14.1.1 capture and
-version branching on the HELO version string, exactly as PD does in the
-official CVE-2023-21839 template. The current single-capture template is kept
-honest with a `verified: true` on 12.2.1.4 and the limitation documented here.
+**Version coverage for 21006/21182 IIOP templates:** both templates now embed
+TWO captured byte streams (one per major WLS version) and probe the T3 HELO
+line before the IIOP exchange to pick the right one. This mirrors the
+`if (ver === '12') { ... } else if (ver === '14') { ... }` structure in the
+official CVE-2023-21839 template — just applied to the full `rebind_any` +
+`resolve_any` body rather than only a BEA flag byte. Why the second capture is
+needed at all: the TRMI stub identifier `TRMI:<class>:<HASH1>:<HASH2>`
+embedded in the gadget's wire form has `HASH1`/`HASH2` recomputed by `rmic` on
+every WebLogic rebuild, so the 12.2.1.4 identifier is rejected by 14.1.1
+server's stub validator (and vice versa). The underlying Java gadget chain
+(fields, `getReferent` / `lookupMessageDestination` logic) is unchanged — only
+the ~16-byte identifier differs.
+
+Lab-verified (`-interactions-cooldown-period 30`): CVE-2024-21006 matches 3/3
+on both labs; CVE-2024-21182 matches 3/3 on 14.1.1 and 2/3 on 12.2.1.4 (one
+public interactsh miss — not a template issue, same noise rate seen with
+upstream templates).
 
 ## 3. Coverage map
 
@@ -145,8 +153,8 @@ honest with a `verified: true` on 12.2.1.4 and the limitation documented here.
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
 | CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
 | CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` (active, signed) + `CVE-2024-20931.yaml` (version) | **active OAST** |
-| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 only) | `CVE-2024-21006-active-oast.yaml` (IIOP, signed) + `CVE-2024-21006.yaml` (version) | **active OAST (IIOP)** |
-| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 only) | `CVE-2024-21182-active-oast.yaml` (IIOP, signed) + `CVE-2024-21182.yaml` (version) | **active OAST (IIOP)** |
+| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21006-active-oast.yaml` (IIOP, signed, version-branching) + `CVE-2024-21006.yaml` (version) | **active OAST (IIOP)** |
+| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21182-active-oast.yaml` (IIOP, signed, version-branching) + `CVE-2024-21182.yaml` (version) | **active OAST (IIOP)** |
 | CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
