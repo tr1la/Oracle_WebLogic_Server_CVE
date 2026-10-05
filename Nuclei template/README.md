@@ -80,7 +80,7 @@ If future WebLogic releases ever change this UID, add a `HELO`-based branch
 needed for other versions take minutes with the `sockdump.c` + Python replay
 pipeline documented in `PoC-active-lab-verified/`.
 
-### Why only 20931 (and not 21006 / 21182) has an active OAST template
+### 2.1. Why only 20931 (and not 21006 / 21182) has an active OAST template
 
 All three CVEs come from the same WebLogic JNDI family and share the
 capture→replay pipeline. Only CVE-2024-20931 is reachable by a nuclei-style
