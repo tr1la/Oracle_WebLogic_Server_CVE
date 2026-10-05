@@ -105,32 +105,68 @@ against 14.1.1 works unchanged (empirically confirmed above). If a future
 version ever changes the UID, add a `HELO`-based branch — the handshake reports
 the server version precisely.
 
-## 6. Why 21006 / 21182 could NOT be turned into nuclei active-OAST templates
+## 6. T3 vs IIOP, and how 21006 / 21182 became scanner-detectable
 
-The same pipeline was tried on both CVEs; both Java PoCs fire a callback on Lab A,
-and both captures replay cleanly on the wire — but **no OAST interaction is
-produced**. Root cause is the gadget class, not the pipeline.
+Originally this section said 21006 and 21182 could not be turned into nuclei
+active OAST templates because the server-side `NamingNode.lookup()` over **T3**
+treats their gadgets differently from 20931's `ForeignOpaqueReference` and
+ships the Reference back untouched for the client to resolve. That is correct
+**for T3**, and was proven by running the Java PoC from an isolated attacker
+container and watching which IP the callback came from (the attacker JVM, not
+the WLS server JVM).
 
-WebLogic's server-side `NamingNode.lookup()` only calls `.getReferent()` for
-objects it treats as resolve-eagerly. The three gadgets here differ:
+The same test over **IIOP** flipped the result: callbacks came from the WLS
+server JVM, i.e. the server did dial the attacker URL. The CORBA path
+(`weblogic.corba.cos.naming.NamingContextImpl.resolve_any`) always
+materialises the bound Reference via `WLNamingManager.getObjectInstance`
+server-side before transporting the result, because IIOP needs concrete
+objects, not opaque Java-serialized bytes. So the active OAST pipeline does
+work for 21006 and 21182 — it just has to use IIOP, not T3.
 
-| CVE | Gadget | Implements | Server resolves on lookup? |
-|-----|--------|-----------|----------------------------|
-| 2024-20931 | `weblogic.deployment.jms.ForeignOpaqueReference` | **`weblogic.jndi.OpaqueReference`** directly | **YES** → server dials attacker URL → OAST hit |
-| 2024-21182 | `weblogic.ejb.container.internal.AggregatableOpaqueReference` | `weblogic.jndi.ClassTypeOpaqueReference` + `AggregatableInternal` | **NO** → cluster-aware; `writeObject` embeds the writer's local JVMID; server treats foreign JVMIDs as *do-not-resolve* and ships the Reference back for the client to resolve |
-| 2024-21006 | `weblogic.application.naming.MessageDestinationReference` | plain `javax.naming.Reference` subclass | **NO** → server returns the Reference verbatim |
+| CVE | Gadget | T3 lookup | IIOP resolve_any |
+|-----|--------|-----------|------------------|
+| 2024-20931 | `ForeignOpaqueReference` | **server-side** | server-side |
+| 2024-21182 | `AggregatableOpaqueReference` | **client-side** (cluster-aware) | **server-side** |
+| 2024-21006 | `MessageDestinationReference` | **client-side** (plain Reference) | **server-side** |
 
-Direct evidence from Lab A: when the real Java PoC for 21182 or 21006 fires a
-callback, inspecting the server's lookup response shows the attacker URL (e.g.
-`rmi://host.docker.internal:18099/A...`) **echoed back inside the response
-blob** — i.e. the server never dialed it. The DNS/JRMI call happens *after*
-the Java client's `NamingManager.getObjectInstance()` processes the returned
-Reference. A nuclei scanner is a byte pusher, not a JNDI client, so it cannot
-reproduce that step. The CVE primitive itself is still real — it is the
-"attacker binds a poisoned reference → a legitimate victim later looks it up and
-is owned" vector — just not scanner-detectable from the outside like 20931 is.
+The IIOP pipeline follows ProjectDiscovery's official CVE-2023-21839 template:
+
+1. Send a GIOP 1.2 LocateRequest for `NameService` (first 35 bytes of the
+   captured c2s).
+2. Read the LocateReply and walk from offset 0x60 to extract the per-session
+   8-byte `OBJECT_KEY` (same `foff = 0x60 + lt + 0x75` heuristic PD uses).
+3. Patch the captured `rebind_any` + `resolve_any` frames: substitute the
+   stale key, rewrite `4245412c` → `4245412e` if the server returned the
+   14.x BEA flag, and substitute the 96-byte marker URL with
+   `rmi://{{interactsh-url}}:1099/` padded to 96 bytes.
+4. Send on the same socket; wait for DNS → interactsh.
+
+Why `rebind` instead of `bind`: `bind_any` raises `NameAlreadyBoundException`
+on repeated runs, so the server keeps resolving the first-bound URL and later
+scans never update it. Switching to `rebind_any` makes each run use a fresh URL.
+
+Results on the lab (`-interactions-cooldown-period 30`):
+
+| Template | WebLogic 12.2.1.4.0 | WebLogic 14.1.1.0-dev-11 |
+|----------|----------------------|---------------------------|
+| `CVE-2024-20931-active-oast.yaml` (T3) | ✅ matched | ✅ matched (same bytes — UID is a declared constant) |
+| `CVE-2024-21006-active-oast.yaml` (IIOP) | ✅ 5/5 matched | ❌ gadget `TRMI` class hash differs — needs 14.1.1 capture |
+| `CVE-2024-21182-active-oast.yaml` (IIOP) | ✅ 5/5 matched | ❌ same as above |
+
+Why 14.1.1 fails for 21006/21182: byte-diffing the 12.2.1.4 and 14.1.1 Java
+captures shows a 16-byte region (~offset 1119 in the c2s stream) that is
+version-specific. That region decodes as an ASCII hex pair embedded inside the
+TRMI class identifier `TRMI:weblogic.application.naming.MessageDestinationReference:<HASH1>:<HASH2>`
+— the Java-to-IDL stub signature for the class. WebLogic 14.1.1 appears to
+build a different stub, so the 12.2.1.4 capture is rejected. The proper fix is
+a 14.1.1 capture + HELO-version-based branching (same shape as PD's
+`if (ver === '12') { ... } else if (ver === '14') { ... }`); kept as a
+follow-up because 20931's T3-based template already covers 14.1.1 and the
+version-detect templates still flag affected hosts.
 
 What is kept in `../Nuclei template/`:
 
-- `CVE-2024-20931-active-oast.yaml` — active OAST (verified both labs).
-- `CVE-2024-21006.yaml`, `CVE-2024-21182.yaml` — T3-handshake version-detect only.
+- `CVE-2024-20931-active-oast.yaml` — active OAST, cross-version (both labs).
+- `CVE-2024-21006-active-oast.yaml` — active OAST via IIOP, verified 12.2.1.4.
+- `CVE-2024-21182-active-oast.yaml` — active OAST via IIOP, verified 12.2.1.4.
+- Each has a sibling `CVE-*.yaml` version-detect template for broader coverage.

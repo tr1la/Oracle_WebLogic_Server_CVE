@@ -83,25 +83,43 @@ pipeline documented in `PoC-active-lab-verified/`.
 ### 2.1. Why only 20931 (and not 21006 / 21182) has an active OAST template
 
 All three CVEs come from the same WebLogic JNDI family and share the
-capture→replay pipeline. Only CVE-2024-20931 is reachable by a nuclei-style
-scanner, because of the **gadget class's interface**:
+capture→replay pipeline. Updated finding: **all three are reachable by a
+nuclei-style scanner — but 21006 and 21182 only via IIOP, not T3**:
 
-| CVE | Gadget | Class hierarchy | Server-side resolve on lookup? |
-|-----|--------|-----------------|--------------------------------|
-| 2024-20931 | `weblogic.deployment.jms.ForeignOpaqueReference` | implements **`weblogic.jndi.OpaqueReference`** directly | **YES** → server calls `getReferent()` → DNS → OAST hit |
-| 2024-21182 | `weblogic.ejb.container.internal.AggregatableOpaqueReference` | implements `weblogic.jndi.ClassTypeOpaqueReference` (extends `OpaqueReference`) + `AggregatableInternal` | **NO** → cluster-aware; `writeObject` embeds client's local JVMID; server treats "foreign" serverIDs as *do-not-resolve* and ships the Reference back for the **client** to resolve |
-| 2024-21006 | `weblogic.application.naming.MessageDestinationReference` | extends `javax.naming.Reference` (plain JNDI Reference, no WebLogic opaque marker) | **NO** → server returns the Reference bytes untouched; the chain fires in whichever JNDI client later looks it up |
+| CVE | Gadget | T3 lookup | IIOP resolve_any |
+|-----|--------|-----------|------------------|
+| 2024-20931 | `weblogic.deployment.jms.ForeignOpaqueReference` | **server-side** (direct `OpaqueReference` interface) | server-side |
+| 2024-21182 | `weblogic.ejb.container.internal.AggregatableOpaqueReference` | **client-side** (cluster-aware; server treats foreign JVMIDs as do-not-resolve, returns Reference) | **server-side** (CORBA path forces `WLNamingManager.getObjectInstance` server-side) |
+| 2024-21006 | `weblogic.application.naming.MessageDestinationReference` | **client-side** (plain `javax.naming.Reference`, returned verbatim) | **server-side** (same reason as 21182) |
 
-Lab-verified (12.2.1.4.0): the Java PoCs for both 21182 and 21006 **do fire** a
-JRMI/LDAP callback — but the callback comes from the **Java client's own
-`NamingManager`**, not the WLS server. On capture, the server's lookup response
-contains the Reference verbatim (`host.docker.internal:18099/A…` echoed back
-inside the serialized blob); no DNS is issued before that response is sent.
-Hence a nuclei scanner (byte pusher, not a JNDI client) cannot produce an OAST
-interaction, so these two keep version-detect templates only. The CVE primitive
-itself is still real — it is the "attacker binds a poisoned reference; a
-legitimate victim later looks it up" vector — just not scanner-detectable from
-the outside the way 20931 is.
+Lab-proved by running the Java PoC from an isolated attacker container and
+reading the callback source IP — see §6 in
+`../PoC-active-lab-verified/README.md`. Over **T3**, callbacks for 21006/21182
+originate from the attacker JVM (not scanner-reachable). Over **IIOP** on the
+same labs, callbacks originate from the WLS server JVM — nuclei is able to
+drive this via the javascript protocol.
+
+So the active OAST templates in this folder cover the IIOP path for all three,
+not T3. The IIOP pipeline mirrors ProjectDiscovery's CVE-2023-21839 template:
+send a GIOP LocateRequest for `NameService`, parse the LocateReply to extract
+the per-session `OBJECT_KEY`, and patch the captured `rebind_any` +
+`resolve_any` frames with the fresh key before sending them on the same socket.
+Compared to CVE-2023-21839 it is slightly simpler — one key suffices (no
+`key1`/`key2`/`key3` dance), because the IOR components we need are plain
+`BEA 0x2c` / `0x2e` blocks whose 8-byte payload is the only session-dependent
+value — but one extra byte-level nuance applies: WebLogic 14.1.1 uses `0x2e`
+instead of `0x2c` as the BEA version flag, so the template auto-detects the
+flag from the LocateReply and rewrites `4245412c` → `4245412e` in the body.
+
+**Version coverage caveat for 21006/21182 IIOP templates:** both are verified
+5/5 against WebLogic 12.2.1.4.0 with `-interactions-cooldown-period 30`. On
+14.1.1.0.0 the TRMI class signature for the gadget (the `HASH1:HASH2` suffix in
+`TRMI:…MessageDestinationReference:…`) differs from 12.2.1.4.0 — a diff of
+captured bytes between the two labs shows a 16-byte region at offset ~1119 that
+is version-specific. A proper 14.1.1 template needs a 14.1.1 capture and
+version branching on the HELO version string, exactly as PD does in the
+official CVE-2023-21839 template. The current single-capture template is kept
+honest with a `verified: true` on 12.2.1.4 and the limitation documented here.
 
 ## 3. Coverage map
 
@@ -127,8 +145,8 @@ the outside the way 20931 is.
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
 | CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
 | CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` (active, signed) + `CVE-2024-20931.yaml` (version) | **active OAST** |
-| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created** (client-side chain — see §2.1) | `CVE-2024-21006.yaml` | T3 version |
-| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created** (client-side chain — see §2.1) | `CVE-2024-21182.yaml` | T3 version |
+| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 only) | `CVE-2024-21006-active-oast.yaml` (IIOP, signed) + `CVE-2024-21006.yaml` (version) | **active OAST (IIOP)** |
+| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 only) | `CVE-2024-21182-active-oast.yaml` (IIOP, signed) + `CVE-2024-21182.yaml` (version) | **active OAST (IIOP)** |
 | CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
