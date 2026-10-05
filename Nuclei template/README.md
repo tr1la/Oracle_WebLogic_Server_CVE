@@ -20,9 +20,7 @@ use the standard non-destructive approach:
   - ⚠️ The T3 handshake reveals only the **base release**, not the applied
     Critical Patch Update. A match = **potential exposure**, not confirmed
     vulnerability. Always confirm the host's patch level.
-- **HTTP active/heuristic:** `CVE-2021-2109` (console attack-surface + version)
-  and `CVE-2026-21962` (proxy-plugin normalization bypass — heuristic because
-  the upstream PoC is redacted).
+- **HTTP active/heuristic:** `CVE-2021-2109` (console attack-surface + version).
 
 For **confirmed exploitation** of the two where an official active (OAST-based)
 template exists, prefer upstream:
@@ -150,15 +148,14 @@ upstream templates).
 | CVE-2021-2211  | T3/IIOP XXE info leak     | **created** | `CVE-2021-2211.yaml`  | T3 version |
 | CVE-2021-2394  | T3/IIOP deser RCE         | **created** | `CVE-2021-2394.yaml`  | T3 version |
 | CVE-2022-21371 | LFI / path traversal      | _upstream_  | `http/cves/2022/CVE-2022-21371.yaml` | active HTTP |
-| CVE-2023-21839 | T3/IIOP JNDI RCE          | **created** (+ upstream active) | `CVE-2023-21839.yaml` | T3 version |
+| CVE-2023-21839 | T3/IIOP JNDI RCE          | **upstream active (local copy)** | `CVE-2023-21839-active-oast.yaml` | active OAST |
 | CVE-2023-21931 | T3 deser/JNDI             | **created** | `CVE-2023-21931.yaml` | T3 version |
-| CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` (active, signed) + `CVE-2024-20931.yaml` (version) | **active OAST** |
-| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21006-active-oast.yaml` (IIOP, signed, version-branching) + `CVE-2024-21006.yaml` (version) | **active OAST (IIOP)** |
-| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21182-active-oast.yaml` (IIOP, signed, version-branching) + `CVE-2024-21182.yaml` (version) | **active OAST (IIOP)** |
-| CVE-2026-21962 | Proxy-plugin traversal    | **created** | `CVE-2026-21962.yaml` | heuristic HTTP |
+| CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` | **active OAST** |
+| CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21006-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
+| CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21182-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
-**19 templates created**; 5 already covered upstream.
+**18 templates created**; 5 already covered upstream = 23/23 covered.
 
 ## 4. Usage
 
@@ -180,14 +177,10 @@ Run the whole folder against a list:
 nuclei -t "Nuclei template/" -l targets.txt
 ```
 
-The HTTP heuristic (`CVE-2026-21962`) benefits from interactsh/OAST and a known
-protected path — adjust `path`/matchers once the authoritative PoC is public.
-
 ## 5. Caveats & disclaimer
 
 - T3 templates report **base-version exposure**, which can be a false positive on
   fully patched hosts (same base version, patched internals). Confirm CPU level.
-- `CVE-2026-21962` is a **heuristic** (PoC redacted upstream) and
-  `CVE-2026-60206` relies on T3 version only (public SAML PoCs are unverified —
+- `CVE-2026-60206` relies on T3 version only (public SAML PoCs are unverified —
   one uses a `placeholder_signature`).
 - Use only against systems you are authorized to test.
