@@ -78,7 +78,35 @@ If future WebLogic releases ever change this UID, add a `HELO`-based branch
 needed for other versions take minutes with the `sockdump.c` + Python replay
 pipeline documented in `PoC-active-lab-verified/`.
 
-### 2.1. Why only 20931 (and not 21006 / 21182) has an active OAST template
+### 2.1. CVE-2020-2551 (IIOP deser) — single-capture, 12.x only
+
+Same capture→replay pipeline as above, but with one twist: the gadget
+chain uses Y4er's `com.bea.core.repackaged.springframework
+.transaction.jta.JtaTransactionManager` wrapped in an
+`AnnotationInvocationHandler` proxy (Permit library bypass of the JDK
+reflection warnings). The proxy is delivered via IIOP `rebind_any`,
+and `JtaTransactionManager.readObject` runs server-side —
+`lookupUserTransaction` performs a JNDI lookup on the attacker
+`userTransactionName`, which fires the DNS callback. CVSS 9.8.
+
+The pre-January-2020 CPU IIOP class filter did not block this proxy;
+the January-2020 CPU (and everything in the 14.1.1 line) does. The
+14.1.1 lab reproduces that behaviour: the Java PoC runs to completion
+without the server dialing out. So the template:
+
+- runs the T3 HELO probe to read the WebLogic major version;
+- arms the active IIOP send **only when HELO says 10 or 12**
+  (`ver === "12" || ver === "10"`), and reports no-match on anything
+  else without even opening the IIOP socket;
+- replays a single captured 12.2.1.4 byte stream, patching only the
+  per-session 8-byte OBJECT_KEY (same 0x60 + variable-length + 0x75
+  walker) and the 96-byte marker URL.
+
+Lab-verified: 12.2.1.4 → **3/3 matches** without any
+`-interactions-cooldown-period` tuning (~21s per run). 14.1.1 →
+correctly skipped (~5-6s run, HELO-only).
+
+### 2.2. Why only 20931 (and not 21006 / 21182) has an active OAST template
 
 All three CVEs come from the same WebLogic JNDI family and share the
 capture→replay pipeline. Updated finding: **all three are reachable by a
@@ -131,11 +159,11 @@ upstream templates).
 
 | CVE | Vuln type | Template status | File / source | Detection type |
 |-----|-----------|-----------------|---------------|----------------|
-| CVE-2020-2551  | IIOP deser RCE            | **created** | `CVE-2020-2551.yaml`  | T3 version |
+| CVE-2020-2551  | IIOP deser RCE            | **created — LAB-VERIFIED active IIOP** (12.2.1.4; 14.1.1 patched → auto-skipped) | `CVE-2020-2551-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-2555  | Coherence T3 deser RCE    | **created** | `CVE-2020-2555.yaml`  | T3 version |
-| CVE-2020-2883  | T3/IIOP deser RCE         | **created** | `CVE-2020-2883.yaml`  | T3 version |
+| CVE-2020-2883  | T3/IIOP deser RCE         | **created — LAB-VERIFIED active IIOP** (12.2.1.4; 14.1.1 ReflectionExtractor blacklisted → auto-skipped) | `CVE-2020-2883-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14644 | T3/IIOP class-load RCE    | **created** | `CVE-2020-14644.yaml` | T3 version |
-| CVE-2020-14645 | T3/IIOP JNDI deser RCE    | **created** | `CVE-2020-14645.yaml` | T3 version |
+| CVE-2020-14645 | T3/IIOP JNDI deser RCE    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2020-14645-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14825 | Coherence T3/IIOP RCE     | **created** | `CVE-2020-14825.yaml` | T3 version |
 | CVE-2020-14841 | IIOP JNDI deser RCE       | **created** | `CVE-2020-14841.yaml` | T3 version |
 | CVE-2020-14756 | Coherence T3/IIOP RCE     | **created** | `CVE-2020-14756.yaml` | T3 version |
@@ -156,6 +184,9 @@ upstream templates).
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
 **18 templates created**; 5 already covered upstream = 23/23 covered.
+Eight of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
+CVE-2020-2883, CVE-2020-14645, CVE-2023-21839, CVE-2023-21931,
+CVE-2024-20931, CVE-2024-21006, CVE-2024-21182.
 
 ## 4. Usage
 
