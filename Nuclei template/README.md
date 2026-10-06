@@ -165,7 +165,7 @@ upstream templates).
 | CVE-2020-14644 | T3 defineClass RCE        | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2020-14644-active-oast.yaml` | **active OAST (T3)** |
 | CVE-2020-14645 | T3/IIOP JNDI deser RCE    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2020-14645-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14825 | Coherence T3/IIOP RCE     | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2020-14825-active-oast.yaml` | **active OAST (T3)** |
-| CVE-2020-14841 | IIOP JNDI deser RCE       | **created** | `CVE-2020-14841.yaml` | T3 version |
+| CVE-2020-14841 | IIOP JNDI deser RCE       | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2020-14841-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14756 | Coherence ExternalizableHelper RCE | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2020-14756-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14882 | Console auth bypass       | _upstream_  | `http/cves/2020/CVE-2020-14882.yaml` | active HTTP |
 | CVE-2020-14883 | Console code injection    | _upstream_  | `http/cves/2020/CVE-2020-14883.yaml` | active HTTP |
@@ -184,10 +184,10 @@ upstream templates).
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
 **18 templates created**; 5 already covered upstream = 23/23 covered.
-Thirteen of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
+Fourteen of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
 CVE-2020-2555, CVE-2020-2883, CVE-2020-14644, CVE-2020-14645, CVE-2020-14756,
-CVE-2020-14825, CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006,
-CVE-2024-21182.
+CVE-2020-14825, CVE-2020-14841, CVE-2023-21839, CVE-2023-21931, CVE-2024-20931,
+CVE-2024-21006, CVE-2024-21182.
 
 ## 4. Usage
 
