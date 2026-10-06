@@ -170,7 +170,7 @@ upstream templates).
 | CVE-2020-14882 | Console auth bypass       | _upstream_  | `http/cves/2020/CVE-2020-14882.yaml` | active HTTP |
 | CVE-2020-14883 | Console code injection    | _upstream_  | `http/cves/2020/CVE-2020-14883.yaml` | active HTTP |
 | CVE-2020-14750 | Console auth bypass       | _upstream_  | `http/cves/2020/CVE-2020-14750.yaml` | active HTTP |
-| CVE-2021-2109  | Console JNDI RCE (chained 14882) | **created — LAB-VERIFIED active HTTP** (12.2.1.4; 14.1.1 auth-bypass patched → auto-skipped) | `CVE-2021-2109-active-oast.yaml` | **active OAST (HTTP)** |
+| CVE-2021-2109  | Console JNDI RCE (chained 14882) | **created — LAB-VERIFIED active HTTP** (12.2.1.4 + 14.1.1) | `CVE-2021-2109-active-oast.yaml` | **active OAST (HTTP)** |
 | CVE-2021-2135  | T3/IIOP deser RCE         | _upstream_  | `http/cves/2021/CVE-2021-2135.yaml` | active OAST |
 | CVE-2021-2136  | Coherence 2nd-order deser RCE  | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2021-2136-active-oast.yaml` | **active OAST (T3)** |
 | CVE-2021-2211  | T3/IIOP XXE info leak     | **created** | `CVE-2021-2211.yaml`  | T3 version |
