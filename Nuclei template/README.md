@@ -162,7 +162,7 @@ upstream templates).
 | CVE-2020-2551  | IIOP deser RCE            | **created — LAB-VERIFIED active IIOP** (12.2.1.4; 14.1.1 patched → auto-skipped) | `CVE-2020-2551-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-2555  | Coherence T3 deser RCE    | **created — LAB-VERIFIED active IIOP** (12.2.1.4; 14.1.1 ReflectionExtractor blacklisted → auto-skipped) | `CVE-2020-2555-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-2883  | T3/IIOP deser RCE         | **created — LAB-VERIFIED active IIOP** (12.2.1.4; 14.1.1 ReflectionExtractor blacklisted → auto-skipped) | `CVE-2020-2883-active-oast.yaml` | **active OAST (IIOP)** |
-| CVE-2020-14644 | T3/IIOP class-load RCE    | **created** | `CVE-2020-14644.yaml` | T3 version |
+| CVE-2020-14644 | T3 defineClass RCE        | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2020-14644-active-oast.yaml` | **active OAST (T3)** |
 | CVE-2020-14645 | T3/IIOP JNDI deser RCE    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2020-14645-active-oast.yaml` | **active OAST (IIOP)** |
 | CVE-2020-14825 | Coherence T3/IIOP RCE     | **created** | `CVE-2020-14825.yaml` | T3 version |
 | CVE-2020-14841 | IIOP JNDI deser RCE       | **created** | `CVE-2020-14841.yaml` | T3 version |
@@ -184,8 +184,8 @@ upstream templates).
 | CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
 
 **18 templates created**; 5 already covered upstream = 23/23 covered.
-Eleven of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
-CVE-2020-2555, CVE-2020-2883, CVE-2020-14645, CVE-2020-14756,
+Twelve of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
+CVE-2020-2555, CVE-2020-2883, CVE-2020-14644, CVE-2020-14645, CVE-2020-14756,
 CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006,
 CVE-2024-21182.
 
