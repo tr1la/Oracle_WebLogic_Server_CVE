@@ -233,6 +233,7 @@ nuclei -t "Nuclei template/" -l targets.txt
 
 - T3 templates report **base-version exposure**, which can be a false positive on
   fully patched hosts (same base version, patched internals). Confirm CPU level.
-- `CVE-2026-60206` relies on T3 version only (public SAML PoCs are unverified —
-  one uses a `placeholder_signature`).
+- `CVE-2026-60206` ships **no template** — SAML XSW auth-bypass, not OAST-
+  confirmable, needs SAML2 configured + the target SP's metadata (public PoCs are
+  unverified — one uses a `placeholder_signature`). Documented in the analysis index only.
 - Use only against systems you are authorized to test.
