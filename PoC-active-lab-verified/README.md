@@ -12,6 +12,10 @@ callback target goes.
 > Authorized security-research code for old, patched CVEs (2020–2024), kept for
 > reproducibility of the detection templates. OAST/callback-confirmation oriented.
 
+> **Cách dùng trong pentest (tiếng Việt):** xem [`USAGE-pentest.md`](USAGE-pentest.md)
+> — luồng 3 bước (triage → confirm → exploit), cách weaponize theo từng họ lỗ hổng,
+> và lưu ý engagement.
+
 ## 0. PoC index
 
 | CVE | PoC source | Proto | Gadget / mechanism | Sibling template |
