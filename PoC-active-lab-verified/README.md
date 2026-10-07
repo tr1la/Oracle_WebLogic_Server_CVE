@@ -1,4 +1,41 @@
-# WebLogic JNDI — lab-verified active PoC
+# WebLogic — lab-verified active PoC sources
+
+Java PoC sources developed and run in the lab (Oracle WebLogic
+`container-registry.oracle.com/middleware/weblogic:12.2.1.4` on `:7001` and
+`weblogic:14.1.1.0-dev-11` on `:7101`) while building the active-OAST nuclei
+templates in `../Nuclei template/`. Each PoC was compiled with the container's
+own `weblogic.jar` / `coherence.jar`; the resulting wire bytes were captured with
+the `LD_PRELOAD` shim (`sockdump.c`) and replayed as the nuclei templates. The
+`__OAST__`/marker host in each PoC is where the interactsh (or `verify-listener.py`)
+callback target goes.
+
+> Authorized security-research code for old, patched CVEs (2020–2024), kept for
+> reproducibility of the detection templates. OAST/callback-confirmation oriented.
+
+## 0. PoC index
+
+| CVE | PoC source | Proto | Gadget / mechanism | Sibling template |
+|-----|-----------|-------|--------------------|------------------|
+| CVE-2020-2555  | `src/CVE-2020-2555/CVE_2020_2555_IIOP.java`   | IIOP | Coherence `ReflectionExtractor` (LimitFilter) → RCE | `../Nuclei template/CVE-2020-2555-active-oast.yaml` |
+| CVE-2020-2883  | `src/CVE-2020-2883/CVE_2020_2883_IIOP.java`   | IIOP | `ReflectionExtractor` chain (2555 patch bypass) | `CVE-2020-2883-active-oast.yaml` |
+| CVE-2020-14644 | `src/CVE-2020-14644/CVE_2020_14644_T3.java`   | T3   | `RemoteConstructor` → `defineClass(bytecode)` | `CVE-2020-14644-active-oast.yaml` |
+| CVE-2020-14645 | `src/CVE-2020-14645/CVE_2020_14645_IIOP.java` | IIOP | `UniversalExtractor` → `JdbcRowSetImpl` JNDI | `CVE-2020-14645-active-oast.yaml` |
+| CVE-2020-14756 | `src/CVE-2020-14756/CVE_2020_14756_IIOP.java` | IIOP | `ExternalizableHelper` → `MvelExtractor` → JNDI | `CVE-2020-14756-active-oast.yaml` |
+| CVE-2020-14825 | `src/CVE-2020-14825/CVE_2020_14825_T3.java`   | T3   | `ExtractorComparator` → `JdbcRowSetImpl` JNDI | `CVE-2020-14825-active-oast.yaml` |
+| CVE-2020-14841 | `src/CVE-2020-14841/CVE_2020_14841_IIOP.java` | IIOP | `LockVersionExtractor` → `JdbcRowSetImpl` JNDI | `CVE-2020-14841-active-oast.yaml` |
+| CVE-2021-2136  | `src/CVE-2021-2136/CVE_2021_2136_T3.java`     | T3   | `SimpleBinaryEntry.fromBinary` 2nd-order deser (URLDNS) | `CVE-2021-2136-active-oast.yaml` |
+| CVE-2021-2211  | `src/CVE-2021-2211/` (`CVE_2021_2211_T3.java` + fake `AttributeHolder.java` + `*.hex`) | T3 | XXE: nType-9 XmlSerializable → `SimpleParser` → `validateXsd` → external DTD | `CVE-2021-2211-active-oast.yaml` |
+| CVE-2021-2394  | `src/CVE-2021-2394/CVE_2021_2394_T3.java`     | T3   | `AttributeHolder` + `FilterExtractor` → `JdbcRowSetImpl` JNDI | `CVE-2021-2394-active-oast.yaml` |
+| CVE-2023-21931 | `src/CVE-2023-21931/CVE_2023_21931_IIOP.java` | IIOP | JNDI bind/resolve (21839-related) | `CVE-2023-21931-active-oast.yaml` |
+| CVE-2024-20931 | `src/CVE-2024-20931/com/supeream/CVE_2024_20931.java` | T3 | `ForeignOpaqueReference` JNDI | `CVE-2024-20931-active-oast.yaml` |
+| CVE-2024-21006 | `src/CVE-2024-21006/` (`CVE_2024_21006.java` + `_IIOP.java`) | T3/IIOP | Double-JNDI `MessageDestinationReference` | `CVE-2024-21006-active-oast.yaml` |
+| CVE-2024-21182 | `src/CVE-2024-21182/` (`CVE_2024_21182.java` + `_IIOP.java`) | T3/IIOP | `AggregatableOpaqueReference` JNDI | `CVE-2024-21182-active-oast.yaml` |
+
+All sibling templates are lab-verified active OAST on 12.2.1.4 + 14.1.1 (DNS/RMI
+callback from the WebLogic server JVM), except where their own header notes a
+limitation. CVE-2026-60206 is intentionally excluded (SAML auth-bypass, not OAST-
+confirmable — see the main index). Shared tooling: `sockdump.c` (capture shim),
+`verify-listener.py` (OAST substitute).
 
 Result of the "port-from-PoC + verify-in-lab" effort for the T3/IIOP JNDI CVEs.
 
@@ -24,7 +61,10 @@ CVE-2024-20931 proof (listener output, Lab A):
 
 ## 2. Files
 
-- `src/com/supeream/CVE_2024_20931.java` — parameterized PoC (target + attacker JNDI URL).
+- `src/<CVE-ID>/` — one folder per CVE with its Java PoC source(s); see the index above.
+  `src/CVE-2024-20931/com/supeream/CVE_2024_20931.java` is the parameterized JNDI PoC
+  (target + attacker JNDI URL) used in the walkthrough below.
+- `sockdump.c` — `LD_PRELOAD` capture shim (hooks libc read/write/send/recv).
 - `verify-listener.py` — OAST substitute: logs the server's callback (no internet needed).
 
 ## 3. How to run (reproduces the verification)
@@ -32,7 +72,7 @@ CVE-2024-20931 proof (listener output, Lab A):
 Compile + run **inside the WebLogic container** (it has JDK 8 + `weblogic.jar`; a normal client host works too if it has them):
 
 ```bash
-docker cp src wls12214:/tmp/poc/src
+docker cp src/CVE-2024-20931 wls12214:/tmp/poc/src
 docker exec wls12214 bash -lc 'cd /tmp/poc && javac -cp $ORACLE_HOME/wlserver/server/lib/weblogic.jar -d out src/com/supeream/CVE_2024_20931.java'
 ```
 
