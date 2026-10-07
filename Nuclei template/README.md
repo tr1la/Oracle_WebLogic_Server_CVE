@@ -181,14 +181,21 @@ upstream templates).
 | CVE-2024-20931 | T3/IIOP JNDI RCE          | **created — LAB-VERIFIED active** | `CVE-2024-20931-active-oast.yaml` | **active OAST** |
 | CVE-2024-21006 | T3/IIOP double-JNDI RCE   | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21006-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
 | CVE-2024-21182 | T3/IIOP JNDI RCE (KEV)    | **created — LAB-VERIFIED active IIOP** (12.2.1.4 + 14.1.1) | `CVE-2024-21182-active-oast.yaml` (version-branching) | **active OAST (IIOP)** |
-| CVE-2026-60206 | SAML auth bypass          | **created** | `CVE-2026-60206.yaml` | T3 version |
+| CVE-2026-60206 | SAML auth bypass (XSW)    | **created — detection** (T3 version + SAML2-endpoint probe; not active OAST — see note) | `CVE-2026-60206.yaml` | version + SAML2 probe |
 
 **18 templates created**; 5 already covered upstream = 23/23 covered.
 Seventeen of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
 CVE-2020-2555, CVE-2020-2883, CVE-2020-14644, CVE-2020-14645, CVE-2020-14756,
 CVE-2020-14825, CVE-2020-14841, CVE-2021-2109, CVE-2021-2136, CVE-2021-2211,
 CVE-2021-2394, CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006,
-CVE-2024-21182. The one remaining version-detect template is CVE-2026-60206.
+CVE-2024-21182. The one remaining detection-only template is CVE-2026-60206: it
+is a SAML XSW / signature-vs-identity auth bypass that (a) is not out-of-band
+confirmable (the proof is an authenticated session, not a callback), (b) requires
+the target to have SAML2 federation configured — default WebLogic returns 404 on
+`/saml2/*`, so the labs can only verify the version signal — and (c) needs the
+target SP's own metadata to forge an assertion. It therefore ships as an exposure
+detector (affected T3 version + live SAML2 endpoint discovery), not an active
+exploit.
 
 **10.3.6 coverage note.** Several CVEs list WebLogic 10.3.6 as affected
 (e.g. CVE-2020-2551/2883/14645/14841, CVE-2021-2394/2211), but the active-OAST
