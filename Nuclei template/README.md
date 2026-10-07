@@ -190,6 +190,21 @@ CVE-2020-14825, CVE-2020-14841, CVE-2021-2109, CVE-2021-2136, CVE-2021-2211,
 CVE-2021-2394, CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006,
 CVE-2024-21182. The one remaining version-detect template is CVE-2026-60206.
 
+**10.3.6 coverage note.** Several CVEs list WebLogic 10.3.6 as affected
+(e.g. CVE-2020-2551/2883/14645/14841, CVE-2021-2394/2211), but the active-OAST
+templates for the Coherence-based paths target 12.1.3+/14.x only. Their payloads
+are Coherence/EclipseLink delivery gadgets (AttributeHolder, TopNAggregator,
+FilterExtractor, LockVersionExtractor, ExternalizableHelper) that a stock 10.3.6
+install does not ship — a 10.3.6 target throws ClassNotFoundException before the
+chain runs (verified by booting vulhub/weblogic:10.3.6.0-2017: those classes are
+absent from every jar). 10.3.6 also predates the JEP 290 deserialization filter,
+so exploiting it would use a simpler direct gadget rather than the Coherence
+bypass. Covering 10.3.6 would require separate, pre-JEP290 payloads captured on a
+working 10.3.6 lab; note no WebLogic 10.3.6 image is published for arm64, so the
+only options emulate amd64 under qemu. The HTTP-console chains (CVE-2021-2109,
+and upstream CVE-2020-14882) are payload-text, not serialized bytes, and do fire
+on 10.3.6.
+
 ## 4. Usage
 
 Validate the templates:
