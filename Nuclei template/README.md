@@ -173,7 +173,7 @@ upstream templates).
 | CVE-2021-2109  | Console JNDI RCE (chained 14882) | **created — LAB-VERIFIED active HTTP** (12.2.1.4 + 14.1.1) | `CVE-2021-2109-active-oast.yaml` | **active OAST (HTTP)** |
 | CVE-2021-2135  | T3/IIOP deser RCE         | _upstream_  | `http/cves/2021/CVE-2021-2135.yaml` | active OAST |
 | CVE-2021-2136  | Coherence 2nd-order deser RCE  | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2021-2136-active-oast.yaml` | **active OAST (T3)** |
-| CVE-2021-2211  | T3/IIOP XXE info leak     | **created** | `CVE-2021-2211.yaml`  | T3 version |
+| CVE-2021-2211  | T3/IIOP XXE info leak     | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2021-2211-active-oast.yaml` | **active OAST (T3)** |
 | CVE-2021-2394  | T3/IIOP deser RCE         | **created — LAB-VERIFIED active T3** (12.2.1.4 + 14.1.1) | `CVE-2021-2394-active-oast.yaml` | **active OAST (T3)** |
 | CVE-2022-21371 | LFI / path traversal      | _upstream_  | `http/cves/2022/CVE-2022-21371.yaml` | active HTTP |
 | CVE-2023-21839 | T3/IIOP JNDI RCE          | **upstream active (local copy)** | `CVE-2023-21839-active-oast.yaml` | active OAST |
@@ -186,8 +186,9 @@ upstream templates).
 **18 templates created**; 5 already covered upstream = 23/23 covered.
 Seventeen of the 18 are **active OAST** (not version-fingerprint): CVE-2020-2551,
 CVE-2020-2555, CVE-2020-2883, CVE-2020-14644, CVE-2020-14645, CVE-2020-14756,
-CVE-2020-14825, CVE-2020-14841, CVE-2021-2109, CVE-2021-2136, CVE-2021-2394,
-CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006, CVE-2024-21182.
+CVE-2020-14825, CVE-2020-14841, CVE-2021-2109, CVE-2021-2136, CVE-2021-2211,
+CVE-2021-2394, CVE-2023-21839, CVE-2023-21931, CVE-2024-20931, CVE-2024-21006,
+CVE-2024-21182. The one remaining version-detect template is CVE-2026-60206.
 
 ## 4. Usage
 
