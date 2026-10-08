@@ -35,7 +35,9 @@ def normalize(o):
         rec = {'domain': dom, 'rdns': g(o, 'rdns'), 'city': g(o, 'city_name_EN'),
                'org': g(o, 'organization'), 'service': g(o, 'service')}
     else:                                                    # --- ZoomEye ---
-        dom = host_domain(g(o, 'host')) or g(o, 'domain')    # ưu tiên host (FQDN đủ subdomain), tránh domain gốc thiếu subdomain
+        link = g(o, 'link')
+        link_host = link.split('://', 1)[1] if '://' in link else link
+        dom = host_domain(g(o, 'host')) or host_domain(link_host)   # chỉ host/link (FQDN đủ subdomain); KHÔNG dùng domain gốc
         rec = {'domain': dom, 'rdns': '', 'city': g(o, 'city'),
                'org': g(o, 'org'), 'service': g(o, 'protocol')}
     return port, rec
