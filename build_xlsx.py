@@ -64,21 +64,42 @@ if os.path.exists(full_path):
             if key not in scheme_map or sch == 'https':
                 scheme_map[key] = sch
 
-agg = {}; ports_of = {}
-with open(os.path.join(BASE, "WeblogicScan.json")) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        o = json.loads(line)
-        port, rec = normalize(o)
-        for ip in as_list(o.get('ip')):
-            key = (ip, port); cur = agg.get(key)
-            if cur is None:
-                agg[key] = dict(rec)
-            else:
-                for k, v in rec.items():
-                    if v and not cur.get(k): cur[k] = v
-            ports_of.setdefault(ip, set()).add(port)
+# scheme bổ sung cho host mới (verify_new_hosts.py ghi: host:port <TAB> scheme)
+extra_path = os.path.join(BASE, "weblogic-scheme-extra.txt")
+if os.path.exists(extra_path):
+    with open(extra_path) as f:
+        for line in f:
+            if "\t" not in line: continue
+            hp, sch = line.strip().split("\t", 1)
+            ip, port = (hp.rsplit(":", 1) if ":" in hp else (hp, ""))
+            if sch in ("http", "https"):
+                scheme_map[(ip, port)] = sch
+
+agg = {}; ports_of = {}; json_scheme = {}
+for jf in ("WeblogicScan.json", "WebLogicScan2.json"):   # đọc cả bản cũ + bản mới
+    jp = os.path.join(BASE, jf)
+    if not os.path.exists(jp): continue
+    with open(jp) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            o = json.loads(line)
+            port, rec = normalize(o)
+            # scheme quan sát được từ JSON (FOFA service/url, ZoomEye protocol/link)
+            jsch = (o.get('service') or o.get('protocol') or '').strip().lower()
+            if jsch not in ('http', 'https'):
+                u = (o.get('url') or o.get('link') or '')
+                jsch = u.split('://', 1)[0].lower() if '://' in u else ''
+            for ip in as_list(o.get('ip')):
+                key = (ip, port); cur = agg.get(key)
+                if cur is None:
+                    agg[key] = dict(rec)
+                else:
+                    for k, v in rec.items():
+                        if v and not cur.get(k): cur[k] = v
+                if jsch in ('http', 'https') and (key not in json_scheme or jsch == 'https'):
+                    json_scheme[key] = jsch
+                ports_of.setdefault(ip, set()).add(port)
 
 # --- version đã xác định: host:port -> version (gộp 2 nguồn) ---
 version_map = {}
@@ -133,6 +154,12 @@ with open(os.path.join(BASE, "weblogic-confirmed-hostport.txt")) as f:
             scheme = scheme_map[(ip, '443')]
         elif (ip, '80') in scheme_map and port in ('', '80'):
             scheme = scheme_map[(ip, '80')]
+        elif pkey in json_scheme:
+            scheme = json_scheme[pkey]
+        elif (ip, '443') in json_scheme and port in ('', '443'):
+            scheme = json_scheme[(ip, '443')]
+        elif (ip, '80') in json_scheme and port in ('', '80'):
+            scheme = json_scheme[(ip, '80')]
         else:
             svc = r['service'].lower()
             https = (port in ('443', '8443', '7002')) or ('https' in svc) or ('ssl' in svc)
