@@ -31,15 +31,37 @@ def normalize(o):
     """Chuẩn hóa 1 bản ghi FOFA hoặc ZoomEye về cùng schema."""
     port = str(o.get('port') or '')
     if 'city_name_EN' in o or 'organization' in o:          # --- FOFA ---
-        site = g(o, 'site'); rdns = g(o, 'rdns'); doms = as_list(o.get('domains'))
-        dom = site or rdns or (str(doms[0]).strip() if doms else '')   # FOFA: ưu tiên site -> rdns -> domains
-        rec = {'domain': dom, 'rdns': rdns, 'city': g(o, 'city_name_EN'),
+        site = g(o, 'site'); doms = as_list(o.get('domains'))
+        dom = site or (str(doms[0]).strip() if doms else '')   # FOFA: chỉ domain thật (site -> domains), KHÔNG dùng rdns
+        rec = {'domain': dom, 'rdns': g(o, 'rdns'), 'city': g(o, 'city_name_EN'),
                'org': g(o, 'organization'), 'service': g(o, 'service')}
     else:                                                    # --- ZoomEye ---
         dom = g(o, 'domain') or host_domain(g(o, 'host'))
         rec = {'domain': dom, 'rdns': '', 'city': g(o, 'city'),
                'org': g(o, 'org'), 'service': g(o, 'protocol')}
     return port, rec
+
+# --- scheme THẬT từ httpx (weblogic-full.json): map (ip,port) -> 'http'/'https' ---
+scheme_map = {}
+full_path = os.path.join(BASE, "weblogic-full.json")
+if os.path.exists(full_path):
+    with open(full_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            ip = (o.get('host') or o.get('host_ip') or '').strip()
+            port = str(o.get('port') or '')
+            sch = (o.get('scheme') or '').strip().lower()
+            if not ip or sch not in ('http', 'https'):
+                continue
+            key = (ip, port)
+            # ưu tiên https nếu cả hai scheme cùng probe trúng một (ip,port)
+            if key not in scheme_map or sch == 'https':
+                scheme_map[key] = sch
 
 agg = {}; ports_of = {}
 with open(os.path.join(BASE, "WeblogicScan.json")) as f:
@@ -78,15 +100,35 @@ with open(os.path.join(BASE, "weblogic-confirmed-hostport.txt")) as f:
         if not hp: continue
         ip, port = (hp.rsplit(':', 1) if ':' in hp else (hp, ''))
         r = lookup(ip, port)
-        svc = r['service'].lower()
-        https = (port in ('443', '8443', '7002')) or ('https' in svc) or ('ssl' in svc)
-        scheme = 'https' if https else 'http'
+        # scheme: ưu tiên bind THẬT từ httpx; không có thì đoán theo port/service
+        pkey = (ip, port if port else '')
+        if pkey in scheme_map:
+            scheme = scheme_map[pkey]
+        elif (ip, '443') in scheme_map and port in ('', '443'):
+            scheme = scheme_map[(ip, '443')]
+        elif (ip, '80') in scheme_map and port in ('', '80'):
+            scheme = scheme_map[(ip, '80')]
+        else:
+            svc = r['service'].lower()
+            https = (port in ('443', '8443', '7002')) or ('https' in svc) or ('ssl' in svc)
+            scheme = 'https' if https else 'http'
         host = r['domain'] if r['domain'] else ip
+        # làm sạch domain: bỏ scheme/path/port đã dính sẵn, tránh lặp https://
+        host = host.strip()
+        if '://' in host: host = host.split('://', 1)[1]
+        host = host.split('/', 1)[0].rsplit(':', 1)[0] if host else ip
+        if not host: host = ip
         pp = '' if port in ('', '80', '443') else ':' + port
         rows.append({'url': f"{scheme}://{host}{pp}", 'has_domain': bool(r['domain']),
                      'ipport': hp if port else ip, 'city': r['city'], 'org': r['org']})
 
-rows.sort(key=lambda x: (not x['has_domain'], x['url']))   # domain lên đầu
+def url_has_letter(u):
+    """True nếu phần host của URL có chữ cái (là domain), False nếu chỉ toàn IP/số."""
+    host = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]
+    return any(c.isalpha() for c in host)
+
+# URL có domain (chữ) xếp lên đầu, trong mỗi nhóm sắp theo alphabet
+rows.sort(key=lambda x: (not url_has_letter(x['url']), x['url'].lower()))
 
 wb = Workbook(); ws = wb.active; ws.title = "WebLogic VN"
 ws.append(["URL", "IP:PORT", "Thành phố", "Tổ chức"])
