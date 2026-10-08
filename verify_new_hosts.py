@@ -90,11 +90,15 @@ def probe(ip, port):
     chk_port = port if port else "443"
     if not port_open(ip, chk_port) and not (port == "" and port_open(ip, "80")):
         return ("", "", "")
-    # thứ tự scheme: ưu tiên scheme JSON đã quan sát; nếu JSON đã biết thì CHỈ probe scheme đó
+    # LUÔN thử cả http lẫn https (pre-check TCP đã loại cổng chết nên không chậm);
+    # chỉ dùng scheme JSON / port để xếp THỨ TỰ ưu tiên probe trước
     js = json_scheme.get((ip, port))
-    if js == "https":   order = ["https"]
-    elif js == "http":  order = ["http"]
-    else:               order = (["https", "http"] if port in ("443", "8443", "7002") else ["http", "https"])
+    if js == "https" or port in ("443", "8443", "7002"):
+        order = ["https", "http"]
+    elif js == "http":
+        order = ["http", "https"]
+    else:
+        order = ["http", "https"]
     best = ("", "", "")   # verdict, version, scheme
     for sch in order:
         pp = "" if port in ("", "80", "443") else ":" + port
