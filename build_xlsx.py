@@ -162,12 +162,17 @@ thin = Side(style="thin", color="DDDDDD"); border = Border(left=thin, right=thin
 for c in ws[1]:
     c.font = hf; c.fill = fill; c.alignment = Alignment(horizontal="center", vertical="center"); c.border = border
 dom_fill = PatternFill("solid", fgColor="FDF2E9")
+link_font = Font(color="0563C1", underline="single")
 for r in rows:
     ws.append([r['url'], r['ipport'], r['version'], r['city'], r['org']])
 for i, r in enumerate(rows, start=2):
     for c in ws[i]:
         c.border = border; c.alignment = Alignment(vertical="center")
         if r['has_domain']: c.fill = dom_fill
+    # cột A: biến URL thành hyperlink bấm mở được
+    a = ws.cell(row=i, column=1)
+    a.hyperlink = r['url']
+    a.font = link_font
 for j, w in enumerate([46, 24, 14, 18, 48], start=1):
     ws.column_dimensions[get_column_letter(j)].width = w
 ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:E{len(rows)+1}"
