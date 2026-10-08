@@ -31,12 +31,11 @@ def normalize(o):
     """Chuẩn hóa 1 bản ghi FOFA hoặc ZoomEye về cùng schema."""
     port = str(o.get('port') or '')
     if 'city_name_EN' in o or 'organization' in o:          # --- FOFA ---
-        site = g(o, 'site'); doms = as_list(o.get('domains'))
-        dom = site or (str(doms[0]).strip() if doms else '')   # FOFA: chỉ domain thật (site -> domains), KHÔNG dùng rdns
+        dom = g(o, 'site')                                     # FOFA: chỉ dùng site (FQDN đủ); KHÔNG dùng domains (dễ thiếu subdomain) hay rdns
         rec = {'domain': dom, 'rdns': g(o, 'rdns'), 'city': g(o, 'city_name_EN'),
                'org': g(o, 'organization'), 'service': g(o, 'service')}
     else:                                                    # --- ZoomEye ---
-        dom = g(o, 'domain') or host_domain(g(o, 'host'))
+        dom = host_domain(g(o, 'host')) or g(o, 'domain')    # ưu tiên host (FQDN đủ subdomain), tránh domain gốc thiếu subdomain
         rec = {'domain': dom, 'rdns': '', 'city': g(o, 'city'),
                'org': g(o, 'org'), 'service': g(o, 'protocol')}
     return port, rec
@@ -79,6 +78,19 @@ with open(os.path.join(BASE, "WeblogicScan.json")) as f:
                     if v and not cur.get(k): cur[k] = v
             ports_of.setdefault(ip, set()).add(port)
 
+# --- version đã xác định (từ weblogic-tierA-versions.txt): host:port -> version ---
+version_map = {}
+ver_path = os.path.join(BASE, "weblogic-tierA-versions.txt")
+if os.path.exists(ver_path):
+    with open(ver_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.upper().startswith("HOST") or set(line) <= set("- "):
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and parts[-1] not in ('?', 'N/A'):
+                version_map[parts[0]] = parts[-1]
+
 FIELDS = ('domain', 'rdns', 'city', 'org', 'service')
 
 def lookup(ip, port):
@@ -119,8 +131,10 @@ with open(os.path.join(BASE, "weblogic-confirmed-hostport.txt")) as f:
         host = host.split('/', 1)[0].rsplit(':', 1)[0] if host else ip
         if not host: host = ip
         pp = '' if port in ('', '80', '443') else ':' + port
+        ipport = hp if port else ip
         rows.append({'url': f"{scheme}://{host}{pp}", 'has_domain': bool(r['domain']),
-                     'ipport': hp if port else ip, 'city': r['city'], 'org': r['org']})
+                     'ipport': ipport, 'city': r['city'], 'org': r['org'],
+                     'version': version_map.get(ipport, '')})
 
 def url_has_letter(u):
     """True nếu phần host của URL có chữ cái (là domain), False nếu chỉ toàn IP/số."""
@@ -131,25 +145,26 @@ def url_has_letter(u):
 rows.sort(key=lambda x: (not url_has_letter(x['url']), x['url'].lower()))
 
 wb = Workbook(); ws = wb.active; ws.title = "WebLogic VN"
-ws.append(["URL", "IP:PORT", "Thành phố", "Tổ chức"])
+ws.append(["URL", "IP:PORT", "Version", "Thành phố", "Tổ chức"])
 hf = Font(bold=True, color="FFFFFF"); fill = PatternFill("solid", fgColor="C0392B")
 thin = Side(style="thin", color="DDDDDD"); border = Border(left=thin, right=thin, top=thin, bottom=thin)
 for c in ws[1]:
     c.font = hf; c.fill = fill; c.alignment = Alignment(horizontal="center", vertical="center"); c.border = border
 dom_fill = PatternFill("solid", fgColor="FDF2E9")
 for r in rows:
-    ws.append([r['url'], r['ipport'], r['city'], r['org']])
+    ws.append([r['url'], r['ipport'], r['version'], r['city'], r['org']])
 for i, r in enumerate(rows, start=2):
     for c in ws[i]:
         c.border = border; c.alignment = Alignment(vertical="center")
         if r['has_domain']: c.fill = dom_fill
-for j, w in enumerate([46, 24, 18, 48], start=1):
+for j, w in enumerate([46, 24, 14, 18, 48], start=1):
     ws.column_dimensions[get_column_letter(j)].width = w
-ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:D{len(rows)+1}"
+ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:E{len(rows)+1}"
 out = os.path.join(BASE, "WebLogic-VN-confirmed.xlsx")
 wb.save(out)
 
 ndom = sum(1 for r in rows if r['has_domain'])
 nocity = sum(1 for r in rows if not r['city'])
+nver = sum(1 for r in rows if r['version'])
 print(f"Da ghi {out}")
-print(f"Tong: {len(rows)} | co domain: {ndom} | thieu city: {nocity}")
+print(f"Tong: {len(rows)} | co domain: {ndom} | co version: {nver} | thieu city: {nocity}")
