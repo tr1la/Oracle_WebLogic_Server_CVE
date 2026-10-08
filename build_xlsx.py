@@ -78,16 +78,27 @@ with open(os.path.join(BASE, "WeblogicScan.json")) as f:
                     if v and not cur.get(k): cur[k] = v
             ports_of.setdefault(ip, set()).add(port)
 
-# --- version đã xác định (từ weblogic-tierA-versions.txt): host:port -> version ---
+# --- version đã xác định: host:port -> version (gộp 2 nguồn) ---
 version_map = {}
-ver_path = os.path.join(BASE, "weblogic-tierA-versions.txt")
-if os.path.exists(ver_path):
-    with open(ver_path) as f:
+# 1) bản Tier A (host:port + version, có header/separator)
+tierA = os.path.join(BASE, "weblogic-tierA-versions.txt")
+if os.path.exists(tierA):
+    with open(tierA) as f:
         for line in f:
             line = line.strip()
             if not line or line.upper().startswith("HOST") or set(line) <= set("- "):
                 continue
             parts = line.split()
+            if len(parts) >= 2 and parts[-1] not in ('?', 'N/A'):
+                version_map[parts[0]] = parts[-1]
+# 2) bản đầy đủ do fetch_versions.py tạo (host:port <TAB> version) - ghi đè/bổ sung
+allver = os.path.join(BASE, "weblogic-versions-all.txt")
+if os.path.exists(allver):
+    with open(allver) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            parts = line.split('\t') if '\t' in line else line.split()
             if len(parts) >= 2 and parts[-1] not in ('?', 'N/A'):
                 version_map[parts[0]] = parts[-1]
 
