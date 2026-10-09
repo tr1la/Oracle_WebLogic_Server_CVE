@@ -25,34 +25,44 @@ def ascii_ok(s):
     try: s.encode('ascii'); return True
     except Exception: return False
 
+def ensure_scheme(u, proto, port):
+    """Đảm bảo URL có scheme (FOFA host đôi khi thiếu)."""
+    u = (u or '').strip()
+    if not u: return ''
+    if '://' in u: return u
+    sch = proto if proto in ('http', 'https') else ('https' if port in ('443', '8443', '7002') else 'http')
+    return f"{sch}://{u}"
+
 rows = []   # bản ghi chuẩn hóa
 
-# --- FOFA ---
+# --- FOFA: URL lấy từ field `host` ---
 fp = os.path.join(BASE, "WLSfofa.csv")
 if os.path.exists(fp):
-    with open(fp, newline='', encoding='utf-8') as f:
+    with open(fp, newline='', encoding='utf-8-sig') as f:   # utf-8-sig: bỏ BOM ở cột 'host'
         for r in csv.DictReader(f):
             ip = (r.get('ip') or '').strip(); port = (r.get('port') or '').strip()
             if not ip: continue
+            proto = (r.get('protocol') or '').strip().lower()
             dom = clean_host(r.get('domain') or r.get('host') or '')
             if is_ip(dom): dom = ''
-            rows.append({'ip': ip, 'port': port, 'domain': dom,
-                         'scheme': (r.get('protocol') or '').strip().lower(),
+            rows.append({'ip': ip, 'port': port, 'domain': dom, 'scheme': proto,
+                         'srcurl': ensure_scheme(r.get('host') or '', proto, port),
                          'title': (r.get('title') or '').strip(),
                          'city': (r.get('city') or '').strip(),
                          'org': (r.get('org') or '').strip(), 'src': 'fofa'})
 
-# --- ZoomEye ---
+# --- ZoomEye: URL lấy từ field `url` ---
 zp = os.path.join(BASE, "WLSzoomeye.csv")
 if os.path.exists(zp):
-    with open(zp, newline='', encoding='utf-8') as f:
+    with open(zp, newline='', encoding='utf-8-sig') as f:
         for r in csv.DictReader(f):
             ip = (r.get('ip') or '').strip(); port = (r.get('port') or '').strip()
             if not ip: continue
+            proto = (r.get('protocol') or '').strip().lower()
             dom = clean_host(r.get('domain') or '')
             if is_ip(dom): dom = ''
-            rows.append({'ip': ip, 'port': port, 'domain': dom,
-                         'scheme': (r.get('protocol') or '').strip().lower(),
+            rows.append({'ip': ip, 'port': port, 'domain': dom, 'scheme': proto,
+                         'srcurl': ensure_scheme(r.get('url') or '', proto, port),
                          'title': (r.get('title') or '').strip(),
                          'city': (r.get('city') or '').strip(),
                          'org': (r.get('isp') or '').strip(), 'src': 'zoomeye'})
@@ -63,6 +73,10 @@ def better_org(a, b):
     if b and ascii_ok(b): return b
     return a or b
 
+def url_has_letter(u):
+    h = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]
+    return any(c.isalpha() for c in h)
+
 def merge_into(store, key, r):
     cur = store.get(key)
     if cur is None:
@@ -71,6 +85,10 @@ def merge_into(store, key, r):
         if not cur.get(fld) and r.get(fld): cur[fld] = r[fld]
     cur['org'] = better_org(cur.get('org', ''), r.get('org', ''))
     if r['scheme'] == 'https': cur['scheme'] = 'https'
+    # srcurl: ưu tiên cái có domain (chữ); nếu cur đang là IP mà r có domain -> thay
+    cs, rs = cur.get('srcurl', ''), r.get('srcurl', '')
+    if rs and (not cs or (not url_has_letter(cs) and url_has_letter(rs))):
+        cur['srcurl'] = rs
 
 # ---- dedup theo IP:PORT ----
 by_ipport = {}
@@ -83,6 +101,8 @@ for r in rows:
     merge_into(by_vhost, (r['ip'], r['port'], r['domain']), r)
 
 def url_of(r):
+    # URL nguyên văn từ host(FOFA)/url(ZoomEye); fallback ghép nếu rỗng
+    if r.get('srcurl'): return r['srcurl']
     host = r['domain'] if r['domain'] else r['ip']
     scheme = r['scheme'] if r['scheme'] in ('http', 'https') else ('https' if r['port'] in ('443','8443','7002') else 'http')
     pp = '' if r['port'] in ('', '80', '443') else ':' + r['port']
