@@ -1,20 +1,20 @@
 url,ip,port,scheme,domain,title,city,org
-http://api.bongda.wap.vn:80,210.211.99.71,80,http,api.bongda.wap.vn,"Ngày Đẹp - Xem ngày tốt trong tháng, năm chính xác nhất",,Vietel - CHT Compamy Ltd
+http://api.bongda.wap.vn:80,210.211.99.71,80,http,api.bongda.wap.vn,"Ngày Đẹp - Xem ngày tốt trong tháng, năm chính xác nhất",Ha Noi,Vietel - CHT Compamy Ltd
 http://api.lichvansu.wap.vn:80,210.211.102.97,80,http,api.lichvansu.wap.vn,"Ngày Đẹp - Xem ngày tốt trong tháng, năm chính xác nhất",Hanoi,Vietel - CHT Compamy Ltd
 http://api.xoso.wap.vn:80,210.211.127.182,80,http,api.xoso.wap.vn,Xổ số Wap - Trực tiếp Kết quả xổ số 3 Miền Nhanh Nhất,Hanoi,Vietel - CHT Compamy Ltd
-http://apitest.xoso.wap.vn:80,210.211.127.182,80,http,apitest.xoso.wap.vn,Xổ số Wap - Trực tiếp Kết quả xổ số 3 Miền Nhanh Nhất,,Vietel - CHT Compamy Ltd
+http://apitest.xoso.wap.vn:80,210.211.127.182,80,http,apitest.xoso.wap.vn,Xổ số Wap - Trực tiếp Kết quả xổ số 3 Miền Nhanh Nhất,Ha Noi,Vietel - CHT Compamy Ltd
 http://app-center.vtcgame.vn:80,117.122.125.107,80,http,app-center.vtcgame.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 http://apvs1.dlp.com.tw:7001,113.160.129.228,7001,http,dlp.com.tw,Welcome to Oracle Fusion Middleware,Hai Duong,VNPT Corp
 http://apvs1.dlp.com.tw:9001,113.160.129.228,9001,http,dlp.com.tw,Error 404--Not Found,Hai Duong,VNPT Corp
 http://apvs1.dlp.com.tw:9002,113.160.129.228,9002,http,dlp.com.tw,Error 404--Not Found,Hai Duong,VNPT Corp
-http://bctcnn.vst.mof.gov.vn,45.120.230.50,80,http,mof.gov.vn,,-,Creative Communication Vietnam Joint Stock Company
+http://bctcnn.vst.mof.gov.vn,45.120.230.50,80,http,mof.gov.vn,,Hanoi,Creative Communication Vietnam Joint Stock Company
 http://benhvienmatdaklak.org.vn,117.122.125.107,80,http,benhvienmatdaklak.org.vn,,Hanoi,Vietnam Internet Network Information Center
 http://capcaohcm.toaan.gov.vn,123.30.24.180,80,http,toaan.gov.vn,,Hanoi,VNPT Corp
 http://console.wap.vn:80,210.211.127.182,80,http,console.wap.vn,"Ngày Đẹp - Xem ngày tốt trong tháng, năm chính xác nhất",Hanoi,Vietel - CHT Compamy Ltd
 http://csdlgiaquocgia.mof.gov.vn,182.236.113.46,80,http,mof.gov.vn,Document,Hanoi,Department of Information Technology and Digital Transformation - Ministry of Finance
 http://d92697cc-cd7a-404c-b627-0f5b892bea41.gialinhfurniture.vn,117.122.125.107,80,http,gialinhfurniture.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
-http://dvc.vst.mof.gov.vn,45.120.230.40,80,http,mof.gov.vn,index,-,Creative Communication Vietnam Joint Stock Company
-http://dvctn.vst.mof.gov.vn,45.120.230.41,80,http,mof.gov.vn,Error 404--Not Found,-,Creative Communication Vietnam Joint Stock Company
+http://dvc.vst.mof.gov.vn,45.120.230.40,80,http,mof.gov.vn,index,Hanoi,Creative Communication Vietnam Joint Stock Company
+http://dvctn.vst.mof.gov.vn,45.120.230.41,80,http,mof.gov.vn,Error 404--Not Found,Hanoi,Creative Communication Vietnam Joint Stock Company
 http://erptest.hoasen.edu.vn:80,203.205.57.226,80,http,erptest.hoasen.edu.vn,erptest.hoasen.edu.vn:80,Ho Chi Minh City,CMC Telecom Infrastructure Company
 http://gmobi.vn,123.31.31.126,80,http,gmobi.vn,Home,Hanoi,VIETNAM POSTS AND TELECOMMUNICATIONS GROUP
 http://goodheart.com.vn,117.122.125.107,80,http,goodheart.com.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
@@ -34,11 +34,11 @@ http://quantricongty.vn,117.122.125.107,80,http,quantricongty.vn,Trang chủ,Han
 http://raoviet.vn:80,117.122.125.107,80,http,raoviet.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 http://sso.vietinbank.vn,203.189.29.33,80,http,vietinbank.vn,Error 404--Not Found,Hanoi,VIETINBANK-VN
 http://thongbaotenmien.vn,203.119.73.12,80,http,thongbaotenmien.vn,Hệ thống thông báo sử dụng tên miền quốc tế,Ho Chi Minh City,Vietnam Internet network information center (VNNIC)
-http://tracuudvc.vst.mof.gov.vn,45.120.230.51,80,http,mof.gov.vn,index,-,Creative Communication Vietnam Joint Stock Company
+http://tracuudvc.vst.mof.gov.vn,45.120.230.51,80,http,mof.gov.vn,index,Hanoi,Creative Communication Vietnam Joint Stock Company
 http://trienlamso.ictquangtri.vn,117.122.125.107,80,http,ictquangtri.vn,,Hanoi,Vietnam Internet Network Information Center
 http://vedepnhatban.vn:80,117.122.125.107,80,http,vedepnhatban.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 http://viviane.vn,117.122.125.107,80,http,viviane.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
-http://vst.mof.gov.vn,45.120.230.45,80,http,mof.gov.vn,,-,Creative Communication Vietnam Joint Stock Company
+http://vst.mof.gov.vn,45.120.230.45,80,http,mof.gov.vn,,Hanoi,Creative Communication Vietnam Joint Stock Company
 http://www.dtsweb.tech:8081,113.161.81.238,8081,http,dtsweb.tech,Error 404--Not Found,Ho Chi Minh City,VNPT Corp
 http://www.dtsweb.tech:9001,113.161.81.238,9001,http,dtsweb.tech,Error 404--Not Found,Ho Chi Minh City,VNPT Corp
 http://www.hddt.agimexpharm.com:8082,113.161.212.113,8082,http,agimexpharm.com,Error 404--Not Found,Long Xuyen,VNPT Corp
@@ -50,7 +50,7 @@ https://anninhthanglong.com.vn:443,117.122.125.107,443,https,anninhthanglong.com
 https://aothungiare.com.vn:443,117.122.125.107,443,https,aothungiare.com.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 https://api.xoso.wap.vn:443,210.211.127.182,443,https,api.xoso.wap.vn,api.xoso.wap.vn:443,Hanoi,Vietel - CHT Compamy Ltd
 https://app.pvfcco.com.vn,14.238.99.84,443,https,pvfcco.com.vn,Error 404--Not Found,Ho Chi Minh City,VNPT Corp
-https://bctcnn.vst.mof.gov.vn,45.120.230.50,443,https,mof.gov.vn,,-,Creative Communication Vietnam Joint Stock Company
+https://bctcnn.vst.mof.gov.vn,45.120.230.50,443,https,mof.gov.vn,,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://benhvienmatdaklak.org.vn,117.122.125.107,443,https,benhvienmatdaklak.org.vn,,Hanoi,Vietnam Internet Network Information Center
 https://bpgoldenpine.vn:443,117.122.125.107,443,https,bpgoldenpine.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 https://cims.hnx.vn,103.9.212.43,443,https,hnx.vn,,Hanoi,HaNoi Stock Exchange
@@ -62,9 +62,9 @@ https://csdlgiaquocgia.mof.gov.vn:443,182.236.113.46,443,https,csdlgiaquocgia.mo
 https://cskh.temxacthuc.vn:8081,123.30.208.19,8081,https,temxacthuc.vn,Đăng nhập hệ thống,Hanoi,VNPT Corp
 https://demo.conggiao.info:8081,123.30.208.19,8081,https,conggiao.info,Error 404--Not Found,Hanoi,VNPT Corp
 https://demo.conggiao.info:8098,123.30.208.19,8098,https,conggiao.info,Error 404--Not Found,Hanoi,VNPT Corp
-https://derivatives.hnx.vn:443,103.9.212.48,443,https,derivatives.hnx.vn,Thị trường Phái Sinh - HNX,,HaNoi Stock Exchange
-https://dvc.vst.mof.gov.vn,45.120.230.40,443,https,mof.gov.vn,index,-,Creative Communication Vietnam Joint Stock Company
-https://dvctn.vst.mof.gov.vn,45.120.230.41,443,https,mof.gov.vn,Error 404--Not Found,-,Creative Communication Vietnam Joint Stock Company
+https://derivatives.hnx.vn:443,103.9.212.48,443,https,derivatives.hnx.vn,Thị trường Phái Sinh - HNX,Ha Noi,HaNoi Stock Exchange
+https://dvc.vst.mof.gov.vn,45.120.230.40,443,https,mof.gov.vn,index,Hanoi,Creative Communication Vietnam Joint Stock Company
+https://dvctn.vst.mof.gov.vn,45.120.230.41,443,https,mof.gov.vn,Error 404--Not Found,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://dvctn.vst.mof.gov.vn:443,45.120.230.41,443,https,dvctn.vst.mof.gov.vn,,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://esign.pvfcco.com.vn,14.238.99.83,443,https,pvfcco.com.vn,Error 404--Not Found,Ho Chi Minh City,VNPT Corp
 https://euroeximbank.com.vn,117.122.125.107,443,https,euroeximbank.com.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
@@ -80,7 +80,7 @@ https://hrs.mfmldb.com.vn:8184,14.238.93.114,8184,https,mfmldb.com.vn,Error 404-
 https://hrs.mfmldb.com.vn:8185,14.238.93.114,8185,https,mfmldb.com.vn,Error 404--Not Found,Ho Chi Minh City,VNPT Corp
 https://htttsv.hoasen.edu.vn,203.205.57.225,443,https,hoasen.edu.vn,,Ho Chi Minh City,CMC Telecom Infrastructure Company
 https://idm.homecredit.vn,103.111.244.73,443,https,homecredit.vn,HomeCredit Identity Manager,Ho Chi Minh City,Home Credit Viet nam Finance Company Limited
-https://idm.homecredit.vn:443,103.111.244.73,443,https,idm.homecredit.vn,HomeCredit Identity Manager,,Home Credit Viet nam Finance Company Limited
+https://idm.homecredit.vn:443,103.111.244.73,443,https,idm.homecredit.vn,HomeCredit Identity Manager,Ho Chi Minh,Home Credit Viet nam Finance Company Limited
 https://ids.ssc.gov.vn,103.3.252.106,443,https,ssc.gov.vn,,Hanoi,Cong ty CP Truyen thong quoc te Incom
 https://ids.ssc.gov.vn:443,103.3.252.106,443,https,ids.ssc.gov.vn,ids.ssc.gov.vn:443,Hanoi,Cong ty CP Truyen thong quoc te Incom
 https://irt.mof.gov.vn,118.70.217.120,443,https,mof.gov.vn,,Hanoi,FPT Telecom Company
@@ -92,7 +92,7 @@ https://mail.dailybanxetai.com:8081,123.30.208.19,8081,https,dailybanxetai.com,E
 https://mail.dailybanxetai.com:8098,123.30.208.19,8098,https,dailybanxetai.com,Error 404--Not Found,Hanoi,VNPT Corp
 https://mla.toaan.gov.vn,123.30.24.180,443,https,toaan.gov.vn,,Hanoi,VNPT Corp
 https://mrwish.vn,117.122.125.107,443,https,mrwish.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
-https://msale2.mobifone.vn:443,103.199.79.3,443,https,msale2.mobifone.vn,msale2.mobifone.vn:443,,MOBIFONE Corporation
+https://msale2.mobifone.vn:443,103.199.79.3,443,https,msale2.mobifone.vn,msale2.mobifone.vn:443,Ho Chi Minh,MOBIFONE Corporation
 https://narihamico.vn,117.122.125.107,443,https,narihamico.vn,,Hanoi,Vietnam Internet Network Information Center
 https://newfeel.vn,117.122.125.107,443,https,newfeel.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
 https://nhahangphuongnam.vn,117.122.125.107,443,https,nhahangphuongnam.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
@@ -101,11 +101,11 @@ https://orabi.kimdental.vn,42.115.41.28,443,https,kimdental.vn,Oracle BI Publish
 https://pritos.cloud:3068,115.75.20.142,3068,https,pritos.cloud,Primavera Unifier 登录,Thi Tran Long Dien,Viettel Group
 https://pus.customs.gov.vn,58.186.80.48,443,https,customs.gov.vn,,Hanoi,FPT Telecom Company
 https://pus.customs.gov.vn:443,58.186.80.48,443,https,pus.customs.gov.vn,Trang chủ,Hanoi,FPT Telecom Company
-https://qlahs.vksndtc.gov.vn:443,203.162.255.5,443,https,qlahs.vksndtc.gov.vn,Đăng nhập hệ thống Quản lý án,,VNPT Corp
+https://qlahs.vksndtc.gov.vn:443,203.162.255.5,443,https,qlahs.vksndtc.gov.vn,Đăng nhập hệ thống Quản lý án,Ha Noi,VNPT Corp
 https://quanlyluutru.xuatnhapcanh.gov.vn,42.112.168.116,443,https,xuatnhapcanh.gov.vn,,Hanoi,FPT Telecom Company
 https://rmlvowbsubdomain.a.bb.ccc.dddd.hoangmai.com.vn,117.122.125.107,443,https,hoangmai.com.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
 https://rsaweb.mps.gov.vn,42.1.75.65,443,https,mps.gov.vn,Self-Service Console - Home,Hanoi,MOBIFONE Corporation
-https://sesdp2.edu.vn:443,117.122.125.107,443,https,sesdp2.edu.vn,Trang chủ,,Vietnam Internet Network Information Center
+https://sesdp2.edu.vn:443,117.122.125.107,443,https,sesdp2.edu.vn,Trang chủ,Ha Noi,Vietnam Internet Network Information Center
 https://shopdetu.vn,117.122.125.107,443,https,shopdetu.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
 https://shopnick.com.vn:443,117.122.125.107,443,https,shopnick.com.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 https://ssc.gov.vn,103.3.252.109,443,https,ssc.gov.vn,,Hanoi,Cong ty CP Truyen thong quoc te Incom
@@ -116,7 +116,7 @@ https://tamquocvidieu.vn,117.122.125.107,443,https,tamquocvidieu.vn,Trang chủ,
 https://thangday.vn,117.122.125.107,443,https,thangday.vn,,Hanoi,Vietnam Internet Network Information Center
 https://thongbaotenmien.vn,203.119.73.12,443,https,thongbaotenmien.vn,Hệ thống thông báo sử dụng tên miền quốc tế,Ho Chi Minh City,Vietnam Internet network information center (VNNIC)
 https://topica.vn,117.122.125.107,443,https,topica.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
-https://tracuudvc.vst.mof.gov.vn,45.120.230.51,443,https,mof.gov.vn,index,-,Creative Communication Vietnam Joint Stock Company
+https://tracuudvc.vst.mof.gov.vn,45.120.230.51,443,https,mof.gov.vn,index,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://tta.topicanative.edu.vn:443,117.122.125.107,443,https,tta.topicanative.edu.vn,Trang chủ,Ho Chi Minh City,越南互联网络信息中心
 https://woly.vn,117.122.125.107,443,https,woly.vn,Trang chủ,Hanoi,Vietnam Internet Network Information Center
 https://www.vinpro.net,103.238.209.204,443,https,vinpro.net,Error 404--Not Found,Hanoi,VINGROUP JOINT STOCK COMPANY
@@ -431,7 +431,7 @@ https://118.69.171.248:443,118.69.171.248,443,https,,Du lịch trong nước,Ho 
 https://118.69.32.193:3068,118.69.32.193,3068,https,,Primavera Unifier 登录,Thu Dau Mot,FPT Telecom Company
 https://118.69.35.183:4443,118.69.35.183,4443,https,,E-Business Suite Home Page Redirect,Ho Chi Minh City,FPT Telecom Company
 https://118.70.204.187,118.70.204.187,443,https,,Document,Hanoi,FPT Telecom Company
-https://118.70.217.120:443,118.70.217.120,443,https,,302 Found,,FPT Telecom Company
+https://118.70.217.120:443,118.70.217.120,443,https,,302 Found,Hung Yen,FPT Telecom Company
 https://118.70.241.42:443,118.70.241.42,443,https,,,Ho Chi Minh City,FPT Telecom Company
 https://119.17.197.170:443,119.17.197.170,443,https,,OPERA Login,Hanoi,Netnam Company
 https://119.82.134.70:443,119.82.134.70,443,https,,An error has occurred.,Ho Chi Minh City,CMC Telecom Infrastructure Company
@@ -506,9 +506,9 @@ https://42.112.168.100,42.112.168.100,443,https,,,Hanoi,FPT Telecom Company
 https://42.112.168.101,42.112.168.101,443,https,,,Hanoi,FPT Telecom Company
 https://42.115.41.27:443,42.115.41.27,443,https,,E-Business Suite Home Page Redirect,Ho Chi Minh City,FPT Telecom Company
 https://45.120.230.40:443,45.120.230.40,443,https,,index,Hanoi,Creative Communication Vietnam Joint Stock Company
-https://45.120.230.41,45.120.230.41,443,https,,Error 404--Not Found,-,Creative Communication Vietnam Joint Stock Company
+https://45.120.230.41,45.120.230.41,443,https,,Error 404--Not Found,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://45.120.230.42:443,45.120.230.42,443,https,,index,Hanoi,Creative Communication Vietnam Joint Stock Company
-https://45.120.230.45,45.120.230.45,443,https,,302 Found,-,Creative Communication Vietnam Joint Stock Company
-https://45.120.230.50,45.120.230.50,443,https,,Error,-,Creative Communication Vietnam Joint Stock Company
+https://45.120.230.45,45.120.230.45,443,https,,302 Found,Hanoi,Creative Communication Vietnam Joint Stock Company
+https://45.120.230.50,45.120.230.50,443,https,,Error,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://45.120.230.51:443,45.120.230.51,443,https,,index,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://58.186.179.27:8443,58.186.179.27,8443,https,,Index Page,Hanoi,FPT Telecom Company

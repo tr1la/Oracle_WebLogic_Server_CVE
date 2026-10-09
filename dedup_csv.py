@@ -21,6 +21,10 @@ def clean_host(s):
     if ':' in s and not s.count(':') > 1: s = s.rsplit(':', 1)[0]
     return s.strip().lower()
 
+def norm_city(s):
+    s = (s or '').strip()
+    return '' if s in ('-', 'N/A', 'None') else s   # '-' = rỗng
+
 def ascii_ok(s):
     try: s.encode('ascii'); return True
     except Exception: return False
@@ -48,7 +52,7 @@ if os.path.exists(fp):
             rows.append({'ip': ip, 'port': port, 'domain': dom, 'scheme': proto,
                          'srcurl': ensure_scheme(r.get('host') or '', proto, port),
                          'title': (r.get('title') or '').strip(),
-                         'city': (r.get('city') or '').strip(),
+                         'city': norm_city(r.get('city')),
                          'org': (r.get('org') or '').strip(), 'src': 'fofa'})
 
 # --- ZoomEye: URL lấy từ field `url` ---
@@ -64,7 +68,7 @@ if os.path.exists(zp):
             rows.append({'ip': ip, 'port': port, 'domain': dom, 'scheme': proto,
                          'srcurl': ensure_scheme(r.get('url') or '', proto, port),
                          'title': (r.get('title') or '').strip(),
-                         'city': (r.get('city') or '').strip(),
+                         'city': norm_city(r.get('city')) or norm_city(r.get('subdivisions')),  # city rỗng/'-' -> subdivisions
                          'org': (r.get('isp') or '').strip(), 'src': 'zoomeye'})
 
 def better_org(a, b):
@@ -99,6 +103,16 @@ for r in rows:
 by_vhost = {}
 for r in rows:
     merge_into(by_vhost, (r['ip'], r['port'], r['domain']), r)
+
+# lấp city rỗng từ cổng khác cùng IP (và org tương tự)
+ip_city = {}; ip_org = {}
+for r in by_ipport.values():
+    if r.get('city') and r['ip'] not in ip_city: ip_city[r['ip']] = r['city']
+    if r.get('org') and r['ip'] not in ip_org: ip_org[r['ip']] = r['org']
+for store in (by_ipport, by_vhost):
+    for r in store.values():
+        if not r.get('city') and ip_city.get(r['ip']): r['city'] = ip_city[r['ip']]
+        if not r.get('org') and ip_org.get(r['ip']): r['org'] = ip_org[r['ip']]
 
 def url_of(r):
     # URL nguyên văn từ host(FOFA)/url(ZoomEye); fallback ghép nếu rỗng

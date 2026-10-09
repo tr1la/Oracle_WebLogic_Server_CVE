@@ -10,9 +10,17 @@ from openpyxl.utils import get_column_letter
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
+ORG_MAP = {
+    "越南邮政电信集团": "VNPT Corp",
+    "越南电信": "Viettel Group",
+}
+
 rows = []
 with open(os.path.join(BASE, "wls-live.csv"), newline='', encoding='utf-8') as f:
     rows = list(csv.DictReader(f))
+for r in rows:
+    o = (r.get('org') or '').strip()
+    if o in ORG_MAP: r['org'] = ORG_MAP[o]
 
 def has_letter(u):
     host = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]
