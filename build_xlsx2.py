@@ -16,6 +16,7 @@ OUTXLSX = "WLS-VN-live-vhost.xlsx" if "vhost" in INFILE else "WLS-VN-live.xlsx"
 ORG_MAP = {
     "越南邮政电信集团": "VNPT Corp",
     "越南电信": "Viettel Group",
+    "越南互联网络信息中心": "Vietnam Internet Network Information Center (VNNIC)",
 }
 
 rows = []
@@ -29,8 +30,16 @@ def has_letter(u):
     host = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]
     return any(c.isalpha() for c in host)
 
-# URL có domain (chữ) xếp đầu; trong nhóm sắp alphabet
-rows.sort(key=lambda r: (not has_letter(r['url']), r['url'].lower()))
+def ip_key(ip):
+    try: return tuple(int(x) for x in ip.split('.'))
+    except Exception: return (999, 999, 999, 999)
+
+def port_key(p):
+    try: return int(p)
+    except Exception: return 0
+
+# Ưu tiên URL có domain (chữ) lên đầu; trong mỗi nhóm (domain / IP-only) gom theo IP -> PORT
+rows.sort(key=lambda r: (not has_letter(r['url']), ip_key(r['ip']), port_key(r['port']), r['url'].lower()))
 
 wb = Workbook(); ws = wb.active; ws.title = "WLS VN (live)"
 headers = ["URL", "IP:PORT", "Version", "Note", "Thành phố", "Tổ chức"]
