@@ -99,10 +99,15 @@ by_ipport = {}
 for r in rows:
     merge_into(by_ipport, (r['ip'], r['port']), r)
 
-# ---- dedup theo vhost (IP:PORT + domain) ----
+# ---- dedup theo vhost: key = IP:PORT + FQDN THẬT (lấy từ host/url), không dùng cột domain ----
+def fqdn_of(r):
+    u = r.get('srcurl', '')
+    h = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0] if u else ''
+    return (h or r.get('domain', '') or r['ip']).lower()
+
 by_vhost = {}
 for r in rows:
-    merge_into(by_vhost, (r['ip'], r['port'], r['domain']), r)
+    merge_into(by_vhost, (r['ip'], r['port'], fqdn_of(r)), r)
 
 # lấp city rỗng từ cổng khác cùng IP (và org tương tự)
 ip_city = {}; ip_org = {}

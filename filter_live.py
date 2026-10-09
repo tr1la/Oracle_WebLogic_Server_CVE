@@ -4,10 +4,12 @@ Console/T3 chỉ GHI CHÚ thêm (không dùng để loại).
 Xuất wls-live.csv (chỉ host sống) + cột: version, note_console, note_t3.
 Chạy: python3 filter_live.py
 """
-import csv, os, re, ssl, socket, urllib.request
+import csv, os, re, ssl, socket, sys, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 WORKERS = 50   # số luồng chạy song song
+INFILE = sys.argv[1] if len(sys.argv) > 1 else "wls-dedup-ipport.csv"   # truyền wls-dedup-vhost.csv để quét theo vhost
+OUTFILE = "wls-live-vhost.csv" if "vhost" in INFILE else "wls-live.csv"
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
@@ -60,15 +62,19 @@ def t3_note(ip, port, timeout=6):
     return "", ""
 
 rows = []
-with open(os.path.join(BASE, "wls-dedup-ipport.csv"), newline='', encoding='utf-8') as f:
+with open(os.path.join(BASE, INFILE), newline='', encoding='utf-8') as f:
     rows = list(csv.DictReader(f))
+print(f"Input: {INFILE} ({len(rows)} dòng) -> {OUTFILE}")
 
 def process(r):
     ip, port = r['ip'].strip(), r['port'].strip()
     if not tcp_open(ip, port):
         return ('dead', r)
     scheme = r.get('scheme') or ('https' if port in ('443','8443','7002') else 'http')
-    host = r.get('domain') or ip
+    # host để dựng request = FQDN trong URL (đúng Host header/SNI cho từng vhost); fallback domain/ip
+    u = r.get('url', '')
+    host = (u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]) if u else ''
+    if not host: host = r.get('domain') or ip
     cnote, cver = console_note(scheme, host, port)
     tnote, tver = t3_note(ip, port)
     r['version'] = r.get('version') or cver or tver
@@ -86,12 +92,12 @@ with ThreadPoolExecutor(max_workers=WORKERS) as ex:
             print(f"{tag:22} LIVE  {r['note'] or '-':20} {('v'+r['version']) if r['version'] else ''}")
 
 cols = ['url', 'ip', 'port', 'scheme', 'domain', 'version', 'note', 'title', 'city', 'org']
-with open(os.path.join(BASE, "wls-live.csv"), 'w', newline='', encoding='utf-8') as f:
+with open(os.path.join(BASE, OUTFILE), 'w', newline='', encoding='utf-8') as f:
     w = csv.DictWriter(f, fieldnames=cols, extrasaction='ignore'); w.writeheader()
     for r in sorted(live, key=lambda x: (not bool(x.get('domain')), x.get('url', ''))):
         w.writerow(r)
 
-print(f"\nTong: {len(rows)} | SONG: {len(live)} | CHET: {dead} -> wls-live.csv")
+print(f"\nTong: {len(rows)} | SONG: {len(live)} | CHET: {dead} -> {OUTFILE}")
 print(f"  console-open: {sum(1 for r in live if 'console-open' in r['note'])}"
       f" | console-403: {sum(1 for r in live if 'console-403' in r['note'])}"
       f" | T3-open: {sum(1 for r in live if 'T3-open' in r['note'])}"

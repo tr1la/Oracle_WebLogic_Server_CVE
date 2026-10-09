@@ -8,7 +8,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+import sys
 BASE = os.path.dirname(os.path.abspath(__file__))
+INFILE = sys.argv[1] if len(sys.argv) > 1 else "wls-live.csv"
+OUTXLSX = "WLS-VN-live-vhost.xlsx" if "vhost" in INFILE else "WLS-VN-live.xlsx"
 
 ORG_MAP = {
     "越南邮政电信集团": "VNPT Corp",
@@ -16,7 +19,7 @@ ORG_MAP = {
 }
 
 rows = []
-with open(os.path.join(BASE, "wls-live.csv"), newline='', encoding='utf-8') as f:
+with open(os.path.join(BASE, INFILE), newline='', encoding='utf-8') as f:
     rows = list(csv.DictReader(f))
 for r in rows:
     o = (r.get('org') or '').strip()
@@ -57,10 +60,10 @@ for i, r in enumerate(rows, start=2):
 for j, w in enumerate([46, 24, 14, 22, 18, 46], start=1):
     ws.column_dimensions[get_column_letter(j)].width = w
 ws.freeze_panes = "A2"; ws.auto_filter.ref = f"A1:F{len(rows)+1}"
-wb.save(os.path.join(BASE, "WLS-VN-live.xlsx"))
+wb.save(os.path.join(BASE, OUTXLSX))
 
 ndom = sum(1 for r in rows if has_letter(r['url']))
 nver = sum(1 for r in rows if r.get('version'))
 nopen = sum(1 for r in rows if 'console-open' in (r.get('note') or ''))
 nt3 = sum(1 for r in rows if 'T3-open' in (r.get('note') or ''))
-print(f"Da ghi WLS-VN-live.xlsx | host: {len(rows)} | domain: {ndom} | version: {nver} | console-open: {nopen} | T3-open: {nt3}")
+print(f"Da ghi {OUTXLSX} | host: {len(rows)} | domain: {ndom} | version: {nver} | console-open: {nopen} | T3-open: {nt3}")
