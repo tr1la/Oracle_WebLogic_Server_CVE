@@ -35,6 +35,23 @@ def has_letter(u):
     host = u.split('://', 1)[-1].split('/', 1)[0].rsplit(':', 1)[0]
     return any(c.isalpha() for c in host)
 
+# Gộp cặp URL chỉ khác scheme (http vs https, cùng host[:port]/path) -> giữ https
+def ident(u):
+    return u.split('://', 1)[-1]   # bỏ scheme, giữ host[:port][/path]
+https_by_ident = {}
+for r in rows:
+    if r['url'].startswith('https://'): https_by_ident[ident(r['url'])] = r
+before = len(rows); kept = []
+for r in rows:
+    if r['url'].startswith('http://') and ident(r['url']) in https_by_ident:
+        h = https_by_ident[ident(r['url'])]            # bản https tương ứng
+        if not h.get('version') and r.get('version'): h['version'] = r['version']   # giữ lại version
+        if not h.get('note') and r.get('note'): h['note'] = r['note']               # giữ lại note console/T3
+        continue   # bỏ http
+    kept.append(r)
+rows = kept
+print(f"Gộp http->https: bỏ {before - len(rows)} URL http trùng (merge version/note sang https)")
+
 def ip_key(ip):
     try: return tuple(int(x) for x in ip.split('.'))
     except Exception: return (999, 999, 999, 999)
