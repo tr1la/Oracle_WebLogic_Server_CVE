@@ -40,7 +40,7 @@ def ensure_scheme(u, proto, port):
 rows = []   # bản ghi chuẩn hóa
 
 # --- FOFA: URL lấy từ field `host` ---
-fp = os.path.join(BASE, "WLSfofa.csv")
+fp = os.path.join(BASE, "WLSfofa2.csv")   # bản FOFA đầy đủ hơn
 if os.path.exists(fp):
     with open(fp, newline='', encoding='utf-8-sig') as f:   # utf-8-sig: bỏ BOM ở cột 'host'
         for r in csv.DictReader(f):
