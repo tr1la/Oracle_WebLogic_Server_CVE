@@ -1,6 +1,6 @@
 url,ip,port,scheme,domain,version,note,title,city,org
-http://apvs1.dlp.com.tw:7001,113.160.129.228,7001,http,dlp.com.tw,10.3.6.0,T3-open,Welcome to Oracle Fusion Middleware,Hai Duong,VNPT Corp
-http://apvs1.dlp.com.tw:9001,113.160.129.228,9001,http,dlp.com.tw,10.3.6.0,T3-open,Error 404--Not Found,Hai Duong,VNPT Corp
+http://apvs1.dlp.com.tw:7001,113.160.129.228,7001,http,dlp.com.tw,10.3.6.0,console-open;T3-open,Welcome to Oracle Fusion Middleware,Hai Duong,VNPT Corp
+http://apvs1.dlp.com.tw:9001,113.160.129.228,9001,http,dlp.com.tw,,T3-open,Error 404--Not Found,Hai Duong,VNPT Corp
 http://apvs1.dlp.com.tw:9002,113.160.129.228,9002,http,dlp.com.tw,10.3.6.0,T3-open,Error 404--Not Found,Hai Duong,VNPT Corp
 http://bctcnn.vst.mof.gov.vn,45.120.230.50,80,http,mof.gov.vn,,,,Hanoi,Creative Communication Vietnam Joint Stock Company
 http://capcaohcm.toaan.gov.vn,123.30.24.180,80,http,toaan.gov.vn,,,,Hanoi,VNPT Corp
@@ -39,7 +39,7 @@ https://htttsv.hoasen.edu.vn,203.205.57.225,443,https,hoasen.edu.vn,,,,Ho Chi Mi
 https://idm.homecredit.vn,103.111.244.73,443,https,homecredit.vn,,,HomeCredit Identity Manager,Ho Chi Minh City,Home Credit Viet nam Finance Company Limited
 https://ids.ssc.gov.vn,103.3.252.106,443,https,ssc.gov.vn,,,ids.ssc.gov.vn:443,Hanoi,Cong ty CP Truyen thong quoc te Incom
 https://mla.toaan.gov.vn,123.30.24.180,443,https,toaan.gov.vn,,,302 Found,Hanoi,VNPT Corp
-https://orabi.kimdental.vn,42.115.41.28,443,https,kimdental.vn,,,Oracle BI Publisher Enterprise 登录,Hanoi,FPT Telecom Company
+https://orabi.kimdental.vn,42.115.41.28,443,https,kimdental.vn,12.2.1.3.0,console-open,Oracle BI Publisher Enterprise 登录,Hanoi,FPT Telecom Company
 https://pritos.cloud:3068,115.75.20.142,3068,https,pritos.cloud,,,Primavera Unifier 登录,Thi Tran Long Dien,Viettel Group
 https://pus.customs.gov.vn,58.186.80.48,443,https,customs.gov.vn,,,Trang chủ,Hanoi,FPT Telecom Company
 https://quanlyluutru.xuatnhapcanh.gov.vn,42.112.168.116,443,https,xuatnhapcanh.gov.vn,,,Trang chá»§,Hanoi,FPT Telecom Company
@@ -49,7 +49,7 @@ https://sso.vietinbank.vn,203.189.29.33,443,https,vietinbank.vn,,,Error 404--Not
 https://thongbaotenmien.vn,203.119.73.12,443,https,thongbaotenmien.vn,,,Hệ thống thông báo sử dụng tên miền quốc tế,Ho Chi Minh City,Vietnam Internet network information center (VNNIC)
 https://tracuudvc.vst.mof.gov.vn,45.120.230.51,443,https,mof.gov.vn,,,index,Hanoi,Creative Communication Vietnam Joint Stock Company
 https://www.vinpro.net,103.238.209.204,443,https,vinpro.net,,,Error 404--Not Found,Hanoi,VINGROUP JOINT STOCK COMPANY
-https://www.xsmb360.com,103.82.194.3,443,https,xsmb360.com,,,XSMB 360 - SXMB - XSTD - Kết quả xổ số miền Bắc hôm nay số 1 VN,Da Nang,VIETNAM POSTS AND TELECOMMUNICATIONS GROUP
+https://www.xsmb360.com,103.82.194.3,443,https,xsmb360.com,14.1.1.0.0,console-open,XSMB 360 - SXMB - XSTD - Kết quả xổ số miền Bắc hôm nay số 1 VN,Da Nang,VIETNAM POSTS AND TELECOMMUNICATIONS GROUP
 http://103.238.209.174,103.238.209.174,80,http,,,,Error 404--Not Found,Hanoi,VINGROUP JOINT STOCK COMPANY
 http://103.3.252.107:80,103.3.252.107,80,http,,,,,Hanoi,Cong ty CP Truyen thong quoc te Incom
 http://103.3.252.109:80,103.3.252.109,80,http,,,,301 Moved Permanently,Hanoi,Cong ty CP Truyen thong quoc te Incom
