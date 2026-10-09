@@ -13,6 +13,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 INFILE = sys.argv[1] if len(sys.argv) > 1 else "wls-live.csv"
 OUTXLSX = "WLS-VN-live-vhost.xlsx" if "vhost" in INFILE else "WLS-VN-live.xlsx"
 
+EXCLUDE_IPS = {
+    "117.122.125.107",   # IP deprecated, forward về landing của hosting provider -> false positive
+}
+
 ORG_MAP = {
     "越南邮政电信集团": "VNPT Corp",
     "越南电信": "Viettel Group",
@@ -22,6 +26,7 @@ ORG_MAP = {
 rows = []
 with open(os.path.join(BASE, INFILE), newline='', encoding='utf-8') as f:
     rows = list(csv.DictReader(f))
+rows = [r for r in rows if (r.get('ip') or '').strip() not in EXCLUDE_IPS]   # bỏ IP false-positive
 for r in rows:
     o = (r.get('org') or '').strip()
     if o in ORG_MAP: r['org'] = ORG_MAP[o]
