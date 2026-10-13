@@ -183,13 +183,17 @@ scan_surface() {
   fi
 
   if echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:7001\n\n" | \
-     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -qi "HELO"; then
+     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -qai "HELO"; then
     [[ -n "$surfaces" ]] && surfaces="${surfaces},T3" || surfaces="T3"
   fi
 
-  # ── IIOP probe: send minimal GIOP bytes, look for GIOP response ──
-  if printf '\x47\x49\x4f\x50\x01\x00\x00\x00\x00\x00\x00\x24\x00\x00\x00\x00' | \
-     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -q "GIOP"; then
+  # ── IIOP probe: send a VALID GIOP 1.2 LocateRequest for object key
+  # "NameService"; an open IIOP listener answers with a GIOP LocateReply.
+  # A bare header elicits no reply (server waits for the body) -> false
+  # negatives, so the full message is required. Verified on WLS 12.2.1.4.
+  local giop_probe='\x47\x49\x4f\x50\x01\x02\x00\x03\x00\x00\x00\x17\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x0b\x4e\x61\x6d\x65\x53\x65\x72\x76\x69\x63\x65'
+  if printf "$giop_probe" | \
+     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -qa "GIOP"; then
     [[ -n "$surfaces" ]] && surfaces="${surfaces},IIOP" || surfaces="IIOP"
   fi
 
@@ -199,9 +203,9 @@ scan_surface() {
   echo "  [row $row] $host:$port -> $surfaces"
 }
 
-while IFS=$'\t' read -r row url; do
+while IFS=$'\t' read -r row url <&3; do
   scan_surface "$row" "$url"
-done < "$TARGETS_FILE"
+done 3< "$TARGETS_FILE"
 
 # ─── Phase 2: nuclei CVE scan per surface ────────────────────────────────────
 echo ""
@@ -290,7 +294,7 @@ run_nuclei_for_target() {
       -rate-limit "$RATE_LIMIT" \
       -no-color -jsonl -silent \
       -o "$result_file" \
-      2>/dev/null || true
+      </dev/null 2>/dev/null || true
   fi
 
   # T3/IIOP templates through SOCKS via proxychains4
@@ -305,7 +309,7 @@ run_nuclei_for_target() {
       -rate-limit "$RATE_LIMIT" \
       -no-color -jsonl -silent \
       >> "$result_file" \
-      2>/dev/null || true
+      </dev/null 2>/dev/null || true
   fi
 
   local hits=0
@@ -313,9 +317,9 @@ run_nuclei_for_target() {
   echo "  [row $row] -> $hits finding(s)"
 }
 
-while IFS=$'\t' read -r row url; do
+while IFS=$'\t' read -r row url <&3; do
   run_nuclei_for_target "$row" "$url"
-done < "$TARGETS_FILE"
+done 3< "$TARGETS_FILE"
 
 # ─── Phase 3: write results back to Excel ─────────────────────────────────────
 echo ""
