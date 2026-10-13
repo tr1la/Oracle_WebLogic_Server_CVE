@@ -24,6 +24,11 @@ WORK_DIR="$SCRIPT_DIR/.scan-work"
 ROW_START=2
 ROW_END=79
 TIMEOUT=30
+# Hard cap for each raw surface probe (T3/IIOP/SSL handshake). Kept short and
+# SEPARATE from TIMEOUT: a filtered port ignores nc/ncat -w and would otherwise
+# hang on the OS connect timeout (~75s) or the 30s TIMEOUT. With 2 probes
+# (T3+IIOP) per candidate port, a dead backend costs ~2*PROBE_TIMEOUT, not 60s.
+PROBE_TIMEOUT=6
 RATE_LIMIT=5
 DRY_RUN=false
 PROXY=""
@@ -57,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --socks-auth) SOCKS_AUTH="$2"; shift 2 ;;
     --t3-ports)  T3_PORTS="$2"; shift 2 ;;
     --t3-ssl-ports) T3_SSL_PORTS="$2"; shift 2 ;;
+    --probe-timeout) PROBE_TIMEOUT="$2"; shift 2 ;;
     --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -66,11 +72,12 @@ if [[ -n "$PROXY" ]]; then
   echo "[*] Proxy: $PROXY (all HTTP + nuclei traffic routed through proxy)"
 fi
 
-# `timeout` bounds each raw probe, but stock macOS has no `timeout` command.
-# Use it (or gtimeout) when present; otherwise rely on nc/ncat's own -w idle
-# timeout. On Linux `timeout` exists, so probes are hard-bounded there.
-if command -v timeout &>/dev/null; then TO="timeout $TIMEOUT"
-elif command -v gtimeout &>/dev/null; then TO="gtimeout $TIMEOUT"
+# `timeout` hard-bounds each raw probe at PROBE_TIMEOUT (nc/ncat -w is ignored
+# for connects to filtered hosts). Stock macOS has no `timeout`; use gtimeout or
+# fall back to nc/ncat -w (which still can't bound a filtered connect there).
+# On Linux `timeout` exists, so probes are reliably capped.
+if command -v timeout &>/dev/null; then TO="timeout $PROBE_TIMEOUT"
+elif command -v gtimeout &>/dev/null; then TO="gtimeout $PROBE_TIMEOUT"
 else TO=""; fi
 
 mkdir -p "$WORK_DIR"
@@ -205,7 +212,7 @@ scan_surface() {
   [[ -n "$PROXY" ]] && curl_proxy=(-x "$PROXY")
   local out meta http_code redirect body
   out=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
-    --connect-timeout 10 --max-time "$TIMEOUT" \
+    --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
     -w '__META__%{http_code}\t%{redirect_url}' \
     "$console_url" 2>/dev/null || printf '__META__000\t')
   meta=${out##*__META__}            # "<code>\t<redirect_url>"
@@ -245,7 +252,7 @@ scan_surface() {
       "${url%/}/console/css/%2e%2e%2fconsole.portal" \
       "${url%/}/console/images/%252e%252e%252fconsole.portal"; do
       tout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
-        --connect-timeout 10 --max-time "$TIMEOUT" \
+        --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
         -w '__META__%{http_code}' \
         "$trav_url" 2>/dev/null || printf '__META__000')
       tcode=${tout##*__META__}
@@ -267,9 +274,9 @@ scan_surface() {
   # --t3-ports candidates (default 7001). Probing :443 for T3 is meaningless
   # (TLS front of a reverse proxy) and would false-negative away an open 7001.
   # The nuclei T3/IIOP templates are pinned to this same port in Phase 2.
-  local nc_cmd="nc -w 5"
+  local nc_cmd="nc -w $PROBE_TIMEOUT"
   if [[ -n "$SOCKS" ]]; then
-    nc_cmd="ncat -w 5 --proxy-type socks5 --proxy $SOCKS"
+    nc_cmd="ncat -w $PROBE_TIMEOUT --proxy-type socks5 --proxy $SOCKS"
     [[ -n "$SOCKS_AUTH" ]] && nc_cmd="$nc_cmd --proxy-auth $SOCKS_AUTH"
   fi
 
@@ -279,9 +286,9 @@ scan_surface() {
   # auto-exploited here — flag it for manual work (ysoserial t3s / corbaloc:iiops).
   local ssl_cmd=""
   if command -v ncat &>/dev/null; then
-    ssl_cmd="ncat --ssl -w 5"
+    ssl_cmd="ncat --ssl -w $PROBE_TIMEOUT"
     if [[ -n "$SOCKS" ]]; then
-      ssl_cmd="ncat --ssl -w 5 --proxy-type socks5 --proxy $SOCKS"
+      ssl_cmd="ncat --ssl -w $PROBE_TIMEOUT --proxy-type socks5 --proxy $SOCKS"
       [[ -n "$SOCKS_AUTH" ]] && ssl_cmd="$ssl_cmd --proxy-auth $SOCKS_AUTH"
     fi
   fi
