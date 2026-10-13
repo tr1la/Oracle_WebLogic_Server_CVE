@@ -62,6 +62,13 @@ if [[ -n "$PROXY" ]]; then
   echo "[*] Proxy: $PROXY (all HTTP + nuclei traffic routed through proxy)"
 fi
 
+# `timeout` bounds each raw probe, but stock macOS has no `timeout` command.
+# Use it (or gtimeout) when present; otherwise rely on nc/ncat's own -w idle
+# timeout. On Linux `timeout` exists, so probes are hard-bounded there.
+if command -v timeout &>/dev/null; then TO="timeout $TIMEOUT"
+elif command -v gtimeout &>/dev/null; then TO="gtimeout $TIMEOUT"
+else TO=""; fi
+
 mkdir -p "$WORK_DIR"
 
 if [[ -n "$SOCKS" ]]; then
@@ -193,7 +200,7 @@ scan_surface() {
   local curl_proxy=()
   [[ -n "$PROXY" ]] && curl_proxy=(-x "$PROXY")
   local out meta http_code redirect body
-  out=$(curl -sk "${curl_proxy[@]}" \
+  out=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
     --connect-timeout 10 --max-time "$TIMEOUT" \
     -w '__META__%{http_code}\t%{redirect_url}' \
     "$console_url" 2>/dev/null || printf '__META__000\t')
@@ -233,7 +240,7 @@ scan_surface() {
     for trav_url in \
       "${url%/}/console/css/%2e%2e%2fconsole.portal" \
       "${url%/}/console/images/%252e%252e%252fconsole.portal"; do
-      tout=$(curl -sk "${curl_proxy[@]}" \
+      tout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
         --connect-timeout 10 --max-time "$TIMEOUT" \
         -w '__META__%{http_code}' \
         "$trav_url" 2>/dev/null || printf '__META__000')
@@ -296,9 +303,9 @@ scan_surface() {
     local pp="$1" conn="$2"
     t3_hit=""; iiop_hit=""
     echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:${pp}\n\n" | \
-      timeout "$TIMEOUT" $conn "$host" "$pp" 2>/dev/null | grep -qai "HELO" && t3_hit=1
+      $TO $conn "$host" "$pp" 2>/dev/null | grep -qai "HELO" && t3_hit=1
     printf "$giop_probe" | \
-      timeout "$TIMEOUT" $conn "$host" "$pp" 2>/dev/null | grep -qa "GIOP" && iiop_hit=1
+      $TO $conn "$host" "$pp" 2>/dev/null | grep -qa "GIOP" && iiop_hit=1
     return 0
   }
 
@@ -431,7 +438,7 @@ run_nuclei_for_target() {
     [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
     nuclei -u "$url" \
       "${http_tpls[@]}" \
-      "${nuclei_proxy[@]}" \
+      "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
       -timeout "$TIMEOUT" \
       -rate-limit "$RATE_LIMIT" \
       -no-color -jsonl -silent \
@@ -492,7 +499,7 @@ done 3< "$TARGETS_FILE"
 echo ""
 echo "[*] Phase 3: writing results to Excel..."
 
-python3 - "$EXCEL" "$WORK_DIR" "$ROW_START" "$ROW_END" <<'PYWRITE'
+"$PYTHON" - "$EXCEL" "$WORK_DIR" "$ROW_START" "$ROW_END" <<'PYWRITE'
 import sys, os, json, openpyxl
 from openpyxl.styles import Font, PatternFill
 
