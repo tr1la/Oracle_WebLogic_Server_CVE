@@ -178,7 +178,7 @@ scan_surface() {
   # ── T3 probe: send T3 handshake, look for HELO ──
   local nc_cmd="nc -w 5"
   if [[ -n "$SOCKS" ]]; then
-    nc_cmd="ncat --proxy-type socks5 --proxy $SOCKS"
+    nc_cmd="ncat -w 5 --proxy-type socks5 --proxy $SOCKS"
     [[ -n "$SOCKS_AUTH" ]] && nc_cmd="$nc_cmd --proxy-auth $SOCKS_AUTH"
   fi
 
