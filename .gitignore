@@ -8,3 +8,9 @@ weblogic-12.2.1.4-lab/
 gadget-output/
 gadget-scan-libs/
 payload/
+
+# Recon/scan data — keep out of the public repo (live targets, IPs, exports)
+*.xlsx
+*.txt
+*.csv
+~$*
