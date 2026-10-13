@@ -162,17 +162,76 @@ scan_surface() {
     return
   fi
 
-  # ── HTTP probe: check if WebLogic Console is reachable ──
+  # ── HTTP probe: verify the WebLogic admin console is actually here ──
+  # Status code alone is not enough: a reverse proxy/portal happily returns
+  # 200 or 302 for unrelated content. So classify on code + Location + body:
+  #   200 + WebLogic fingerprint in body        -> HTTP (console confirmed)
+  #   3xx with Location pointing at console/login -> HTTP (redirect to login)
+  #   401/403                                     -> HTTP-restricted
+  #       console app is deployed but access-blocked (connection filter / WAF).
+  #       The preauth CVEs (14882/14883/14750/21371/2135) are auth-bypass +
+  #       path-traversal against internal handlers on a DIFFERENT path than
+  #       /console/login, so they may still fire -> keep the HTTP surface so
+  #       those templates run; nuclei's OAST confirms if the bypass works.
+  #   404/other                                   -> not an HTTP surface
   local console_url="${url%/}/console/login/LoginForm.jsp"
-  local http_code
   local curl_proxy=()
   [[ -n "$PROXY" ]] && curl_proxy=(-x "$PROXY")
-  http_code=$(curl -sk -o /dev/null -w '%{http_code}' \
-    "${curl_proxy[@]}" \
+  local out meta http_code redirect body
+  out=$(curl -sk "${curl_proxy[@]}" \
     --connect-timeout 10 --max-time "$TIMEOUT" \
-    "$console_url" 2>/dev/null || echo "000")
-  if [[ "$http_code" == "200" || "$http_code" == "302" || "$http_code" == "301" ]]; then
-    surfaces="HTTP"
+    -w '__META__%{http_code}\t%{redirect_url}' \
+    "$console_url" 2>/dev/null || printf '__META__000\t')
+  meta=${out##*__META__}            # "<code>\t<redirect_url>"
+  body=${out%__META__*}             # response body (everything before meta)
+  http_code=${meta%%$'\t'*}
+  redirect=${meta#*$'\t'}
+
+  local wls_fp='WebLogic|j_security_check|console/framework|LoginForm|con_context'
+  case "$http_code" in
+    200)
+      if printf '%s' "$body" | grep -qiE "$wls_fp"; then
+        surfaces="HTTP"
+      fi
+      ;;
+    301|302|303|307|308)
+      if printf '%s' "$redirect" | grep -qiE 'console|LoginForm|j_security_check'; then
+        surfaces="HTTP"
+      fi
+      ;;
+    401|403)
+      surfaces="HTTP-restricted"
+      ;;
+  esac
+
+  # ── HTTP fallback: CVE-2020-14882 path-traversal as a secondary signal ──
+  # A WAF may hide /console/login with a fake 404 while the auth-bypass handler
+  # on a different path stays reachable. Only runs when the primary probe did
+  # NOT already find a console. This GET is benign (loads console.portal, no
+  # command execution); a 200 with console markers means the bypass itself
+  # fired (console present AND unauth-reachable). Tries single- then
+  # double-encoded traversal; a 401/403 here means the console is deployed but
+  # the path is blocked/patched.
+  if ! echo "$surfaces" | grep -q "HTTP"; then
+    local trav_markers='WebLogic|con_context|Change Center|console\.portal|consolejndi'
+    local trav_url tout tcode tbody
+    for trav_url in \
+      "${url%/}/console/css/%2e%2e%2fconsole.portal" \
+      "${url%/}/console/images/%252e%252e%252fconsole.portal"; do
+      tout=$(curl -sk "${curl_proxy[@]}" \
+        --connect-timeout 10 --max-time "$TIMEOUT" \
+        -w '__META__%{http_code}' \
+        "$trav_url" 2>/dev/null || printf '__META__000')
+      tcode=${tout##*__META__}
+      tbody=${tout%__META__*}
+      if [[ "$tcode" == "200" ]] && printf '%s' "$tbody" | grep -qiE "$trav_markers"; then
+        surfaces="HTTP-bypass"       # auth-bypass handler reachable (likely vuln)
+        break
+      elif [[ "$tcode" == "401" || "$tcode" == "403" ]]; then
+        surfaces="HTTP-restricted"   # console deployed but path blocked/patched
+        # keep trying the other encoding in case one variant is filtered
+      fi
+    done
   fi
 
   # ── T3 probe: send T3 handshake, look for HELO ──
