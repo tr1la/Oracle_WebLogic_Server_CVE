@@ -27,6 +27,8 @@ TIMEOUT=30
 RATE_LIMIT=5
 DRY_RUN=false
 PROXY=""
+SOCKS=""
+SOCKS_AUTH=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +37,8 @@ while [[ $# -gt 0 ]]; do
     --timeout)   TIMEOUT="$2"; shift 2 ;;
     --rate)      RATE_LIMIT="$2"; shift 2 ;;
     --proxy)     PROXY="$2"; shift 2 ;;
+    --socks)     SOCKS="$2"; shift 2 ;;
+    --socks-auth) SOCKS_AUTH="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -44,6 +48,30 @@ if [[ -n "$PROXY" ]]; then
 fi
 
 mkdir -p "$WORK_DIR"
+
+if [[ -n "$SOCKS" ]]; then
+  echo "[*] SOCKS5: $SOCKS (T3/IIOP raw TCP routed through SOCKS)"
+  PROXYCHAINS_CONF="$WORK_DIR/proxychains.conf"
+  SOCKS_HOST="${SOCKS%%:*}"
+  SOCKS_PORT="${SOCKS##*:}"
+  if [[ -n "$SOCKS_AUTH" ]]; then
+    SOCKS_USER="${SOCKS_AUTH%%:*}"
+    SOCKS_PASS="${SOCKS_AUTH#*:}"
+    cat > "$PROXYCHAINS_CONF" <<PCEOF
+strict_chain
+proxy_dns
+[ProxyList]
+socks5 $SOCKS_HOST $SOCKS_PORT $SOCKS_USER $SOCKS_PASS
+PCEOF
+  else
+    cat > "$PROXYCHAINS_CONF" <<PCEOF
+strict_chain
+proxy_dns
+[ProxyList]
+socks5 $SOCKS_HOST $SOCKS_PORT
+PCEOF
+  fi
+fi
 
 # ─── Template classification by DELIVERY protocol ────────────────────────────
 #
@@ -148,14 +176,10 @@ scan_surface() {
   fi
 
   # ── T3 probe: send T3 handshake, look for HELO ──
-  local nc_cmd
-  if [[ -n "$PROXY" ]]; then
-    local proxy_host proxy_port
-    proxy_host=$(echo "$PROXY" | sed -E 's|^https?://||;s|:.*||')
-    proxy_port=$(echo "$PROXY" | sed -E 's|.*:||;s|/.*||')
-    nc_cmd="ncat --proxy $proxy_host:$proxy_port --proxy-type http"
-  else
-    nc_cmd="nc -w 5"
+  local nc_cmd="nc -w 5"
+  if [[ -n "$SOCKS" ]]; then
+    nc_cmd="ncat --proxy-type socks5 --proxy $SOCKS"
+    [[ -n "$SOCKS_AUTH" ]] && nc_cmd="$nc_cmd --proxy-auth $SOCKS_AUTH"
   fi
 
   if echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:7001\n\n" | \
@@ -238,19 +262,51 @@ run_nuclei_for_target() {
 
   echo "  [row $row] scanning $url ($count templates, surfaces: $surfaces)..."
 
-  local nuclei_proxy=()
-  [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
+  # Split templates: HTTP (through Burp proxy) vs T3/IIOP (through SOCKS via proxychains)
+  local http_tpls=() raw_tpls=()
+  local i=0
+  while [[ $i -lt ${#templates[@]} ]]; do
+    if [[ "${templates[$i]}" == "-t" ]]; then
+      local tpl="${templates[$((i+1))]}"
+      if echo "$tpl" | grep -qE "/http/|2021-2109"; then
+        http_tpls+=("-t" "$tpl")
+      else
+        raw_tpls+=("-t" "$tpl")
+      fi
+      i=$((i+2))
+    else
+      i=$((i+1))
+    fi
+  done
 
-  nuclei -u "$url" \
-    "${templates[@]}" \
-    "${nuclei_proxy[@]}" \
-    -timeout "$TIMEOUT" \
-    -rate-limit "$RATE_LIMIT" \
-    -no-color \
-    -jsonl \
-    -silent \
-    -o "$result_file" \
-    2>/dev/null || true
+  # HTTP templates through Burp proxy
+  if [[ ${#http_tpls[@]} -gt 0 ]]; then
+    local nuclei_proxy=()
+    [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
+    nuclei -u "$url" \
+      "${http_tpls[@]}" \
+      "${nuclei_proxy[@]}" \
+      -timeout "$TIMEOUT" \
+      -rate-limit "$RATE_LIMIT" \
+      -no-color -jsonl -silent \
+      -o "$result_file" \
+      2>/dev/null || true
+  fi
+
+  # T3/IIOP templates through SOCKS via proxychains4
+  if [[ ${#raw_tpls[@]} -gt 0 ]]; then
+    local nuclei_wrap=""
+    if [[ -n "$SOCKS" && -f "${PROXYCHAINS_CONF:-/dev/null}" ]] && command -v proxychains4 &>/dev/null; then
+      nuclei_wrap="proxychains4 -q -f $PROXYCHAINS_CONF"
+    fi
+    $nuclei_wrap nuclei -u "$url" \
+      "${raw_tpls[@]}" \
+      -timeout "$TIMEOUT" \
+      -rate-limit "$RATE_LIMIT" \
+      -no-color -jsonl -silent \
+      >> "$result_file" \
+      2>/dev/null || true
+  fi
 
   local hits=0
   [[ -s "$result_file" ]] && hits=$(wc -l < "$result_file" | tr -d ' ')
