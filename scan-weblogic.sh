@@ -36,8 +36,12 @@ SOCKS_AUTH=""
 T3_PORTS="7001"
 # WebLogic SSL listen ports probed for T3/IIOP over TLS via `ncat --ssl`.
 # Detect-only: reported as T3-ssl/IIOP-ssl (the plaintext nuclei templates
-# cannot deliver over TLS). Override with --t3-ssl-ports, or set empty to skip.
-T3_SSL_PORTS="7002"
+# cannot deliver over TLS). Empty by default: a sample of this list's targets
+# showed all reachable T3 listeners are plaintext (7001/8081) and the 443/80
+# hosts are reverse-proxied web fronts whose backend T3 port is not exposed, so
+# probing 7002 mostly just times out. Enable with --t3-ssl-ports 7002 when a
+# host is suspected to expose T3 over SSL.
+T3_SSL_PORTS=""
 # Python interpreter used for the Excel read/write phases; must have openpyxl.
 # Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
 PYTHON="${PYTHON:-python3}"
@@ -318,8 +322,9 @@ scan_surface() {
     if [[ -n "$t3_open$iiop_open" ]]; then wlport="$p"; break; fi
   done
 
-  # 2) SSL — only if nothing plaintext found and ncat is available (detect-only)
-  if [[ -z "$t3_open$iiop_open" && -n "$ssl_cmd" ]]; then
+  # 2) SSL — only if nothing plaintext found, ncat is available, and SSL ports
+  #    are configured (--t3-ssl-ports; empty by default). Detect-only.
+  if [[ -z "$t3_open$iiop_open" && -n "$ssl_cmd" && ${#ssl_ports[@]} -gt 0 ]]; then
     for p in "${ssl_ports[@]}"; do
       p="${p// /}"; [[ -z "$p" ]] && continue
       probe_port "$p" "$ssl_cmd"
