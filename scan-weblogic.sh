@@ -578,7 +578,8 @@ run_nuclei_for_target() {
           local src="${raw_tpls[$((j+1))]}" base dst
           base=$(basename "$src")
           dst="$tpl_dir/$base"
-          [[ -f "$dst" ]] || sed 's/Port: "7001"/Port: "'"$wlport"'"/' "$src" > "$dst"
+          # match both quoted (Port: "7001") and unquoted (Port: 7001) forms
+          [[ -f "$dst" ]] || sed -E 's/Port: "?7001"?/Port: "'"$wlport"'"/' "$src" > "$dst"
           raw_run+=("-t" "$dst")
           j=$((j+2))
         else

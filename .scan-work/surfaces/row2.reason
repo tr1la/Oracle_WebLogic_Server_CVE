@@ -1,0 +1,4 @@
+• HTTP: /console/login 200 + WebLogic fingerprint in body
+• HTTP-app: WebLogic HTTP endpoint reachable (http://127.0.0.1:17001/wls-wsat/CoordinatorPortType -> 200)
+• T3: HELO handshake on :17001
+• IIOP: GIOP LocateReply on :17001
