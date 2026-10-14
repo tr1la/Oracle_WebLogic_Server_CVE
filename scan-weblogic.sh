@@ -135,6 +135,16 @@ T3_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2024-20931-active-oast.yaml"
 )
 
+# HTTP app-surface — WebLogic HTTP RCE/SSRF endpoints that a reverse proxy still
+# forwards even when /console is hidden or WAF-blocked (wls-wsat, _async, ws_utc,
+# uddiexplorer). Matched to the "HTTP-app" fallback surface (Phase 1 #1).
+HTTP_APP_TEMPLATES=(
+  "$UPSTREAM_TPL/http/cves/2017/CVE-2017-10271.yaml"
+  "$UPSTREAM_TPL/http/cves/2019/CVE-2019-2725.yaml"
+  "$UPSTREAM_TPL/http/cves/2018/CVE-2018-2894.yaml"
+  "$UPSTREAM_TPL/http/cves/2014/CVE-2014-4210.yaml"
+)
+
 # IIOP delivery — requires T3 (version probe) + IIOP (payload delivery)
 IIOP_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2020-2551-active-oast.yaml"
