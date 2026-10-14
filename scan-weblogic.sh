@@ -564,38 +564,14 @@ run_nuclei_for_target() {
       nuclei_wrap="proxychains4 -q -f $PROXYCHAINS_CONF"
     fi
 
-    # The templates pin `Port: "7001"` internally (they ignore the URL port).
-    # If the detected port differs, run sed-patched copies so the payload hits
-    # the right port instead of always 7001.
-    local -a raw_run=("${raw_tpls[@]}")
-    if [[ "$wlport" != "7001" ]]; then
-      local tpl_dir="$WORK_DIR/tpl-$wlport"
-      mkdir -p "$tpl_dir"
-      raw_run=()
-      local j=0
-      while [[ $j -lt ${#raw_tpls[@]} ]]; do
-        if [[ "${raw_tpls[$j]}" == "-t" ]]; then
-          local src="${raw_tpls[$((j+1))]}" base dst
-          base=$(basename "$src")
-          dst="$tpl_dir/$base"
-          # match both quoted (Port: "7001") and unquoted (Port: 7001) forms
-          [[ -f "$dst" ]] || sed -E 's/Port: "?7001"?/Port: "'"$wlport"'"/' "$src" > "$dst"
-          raw_run+=("-t" "$dst")
-          j=$((j+2))
-        else
-          j=$((j+1))
-        fi
-      done
-      # CRITICAL: the sed edit invalidates each template's `# digest:` signature,
-      # and nuclei v3+ SILENTLY SKIPS tampered/unsigned javascript templates
-      # ("no templates provided"). Re-sign the patched copies with the local user
-      # key so they actually run (first --sign auto-generates the key). Without
-      # this, every target whose WebLogic port != 7001 gets ZERO T3/IIOP results.
-      nuclei -sign -t "$tpl_dir" >/dev/null 2>&1 || true
-    fi
-
-    $nuclei_wrap nuclei -u "$host_only" \
-      "${raw_run[@]}" \
+    # The templates default args.Port to 7001, but nuclei OVERRIDES that with the
+    # target's explicit port. So we just pass host:wlport and the original,
+    # unmodified (signed) templates connect to the right port — no sed-editing of
+    # the port (which would invalidate the `# digest:` signature and make nuclei
+    # silently skip the template) and no re-signing. Verified: a template with a
+    # hardcoded Port: "7001" run against `-u host:17001` resolves Port=17001.
+    $nuclei_wrap nuclei -u "$host_only:$wlport" \
+      "${raw_tpls[@]}" \
       -timeout "$TIMEOUT" \
       -rate-limit "$RATE_LIMIT" \
       -no-color -jsonl -silent \
