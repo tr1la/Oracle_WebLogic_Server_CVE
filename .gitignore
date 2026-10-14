@@ -14,3 +14,5 @@ payload/
 *.txt
 *.csv
 ~$*
+# scanner working dir (transient: patched/re-signed templates, raw results)
+.scan-work/

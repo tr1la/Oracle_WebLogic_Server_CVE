@@ -586,6 +586,12 @@ run_nuclei_for_target() {
           j=$((j+1))
         fi
       done
+      # CRITICAL: the sed edit invalidates each template's `# digest:` signature,
+      # and nuclei v3+ SILENTLY SKIPS tampered/unsigned javascript templates
+      # ("no templates provided"). Re-sign the patched copies with the local user
+      # key so they actually run (first --sign auto-generates the key). Without
+      # this, every target whose WebLogic port != 7001 gets ZERO T3/IIOP results.
+      nuclei -sign -t "$tpl_dir" >/dev/null 2>&1 || true
     fi
 
     $nuclei_wrap nuclei -u "$host_only" \
