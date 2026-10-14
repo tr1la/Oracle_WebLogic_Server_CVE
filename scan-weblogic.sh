@@ -47,6 +47,12 @@ T3_PORTS="7001"
 # probing 7002 mostly just times out. Enable with --t3-ssl-ports 7002 when a
 # host is suspected to expose T3 over SSL.
 T3_SSL_PORTS=""
+# Optional T3/IIOP port sweep (--port-scan): when a URL has no explicit WebLogic
+# port, also probe this candidate list (managed-server ports) instead of only
+# --t3-ports. Off by default; it is far noisier/slower (a dead host pays
+# ~len(ports)*2*PROBE_TIMEOUT), so enable it on specific suspected hosts.
+PORT_SCAN=false
+SCAN_PORTS="7001,7002,8001,8002,9001,9002,7003,8080,8443"
 # Python interpreter used for the Excel read/write phases; must have openpyxl.
 # Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
 PYTHON="${PYTHON:-python3}"
@@ -63,6 +69,8 @@ while [[ $# -gt 0 ]]; do
     --t3-ports)  T3_PORTS="$2"; shift 2 ;;
     --t3-ssl-ports) T3_SSL_PORTS="$2"; shift 2 ;;
     --probe-timeout) PROBE_TIMEOUT="$2"; shift 2 ;;
+    --port-scan) PORT_SCAN=true; shift ;;
+    --scan-ports) SCAN_PORTS="$2"; shift 2 ;;
     --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -277,6 +285,33 @@ scan_surface() {
     done
   fi
 
+  # ── HTTP app-surface: WebLogic HTTP RCE/SSRF endpoints (wls-wsat, _async,
+  #    ws_utc, uddiexplorer) that a reverse proxy still forwards even when
+  #    /console is hidden or WAF-blocked. Runs whenever the web port answered at
+  #    all (http_code != 000) so it also complements a confirmed console. GETs
+  #    are benign (no payload); a WebLogic-specific response marks "HTTP-app"
+  #    and Phase 2 runs the deser/SSRF templates (nuclei's OAST confirms RCE).
+  if [[ "$http_code" != "000" ]]; then
+    local app_markers='CoordinatorPortType|AsyncResponseService|wls-wsat|ws_utc|WebServiceTestPage|uddiexplorer|UDDI|XMLDecoder|faultstring|wsdl:definitions'
+    local app_url aout acode abody
+    for app_url in \
+      "${url%/}/wls-wsat/CoordinatorPortType" \
+      "${url%/}/_async/AsyncResponseService" \
+      "${url%/}/ws_utc/begin.do" \
+      "${url%/}/uddiexplorer/"; do
+      aout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
+        --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
+        -w '__META__%{http_code}' \
+        "$app_url" 2>/dev/null || printf '__META__000')
+      acode=${aout##*__META__}
+      abody=${aout%__META__*}
+      if [[ "$acode" =~ ^(200|401|403|405|500)$ ]] && printf '%s' "$abody" | grep -qiE "$app_markers"; then
+        surfaces="${surfaces:+$surfaces,}HTTP-app"
+        break
+      fi
+    done
+  fi
+
   # ── T3 / IIOP probe (raw TCP) ──
   # T3/IIOP never listen on web ports (80/443): the HTTP URL port is for HTTP
   # only. For T3/IIOP we probe the real WebLogic listen port -> the URL's
@@ -309,8 +344,17 @@ scan_surface() {
   if [[ -n "$url_port" && "$url_port" != "80" && "$url_port" != "443" ]]; then
     plain_ports=("$url_port"); ssl_ports=("$url_port")  # explicit port: try both
   else
-    IFS=',' read -ra plain_ports <<< "$T3_PORTS"         # reverse-proxied: defaults
-    IFS=',' read -ra ssl_ports   <<< "$T3_SSL_PORTS"
+    # reverse-proxied web port: probe --t3-ports, plus the --port-scan sweep list
+    local pset="$T3_PORTS"
+    $PORT_SCAN && pset="$T3_PORTS,$SCAN_PORTS"
+    local -a _raw; IFS=',' read -ra _raw <<< "$pset"
+    plain_ports=(); local _seen=" " _pp
+    for _pp in "${_raw[@]}"; do
+      _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
+      [[ "$_seen" == *" $_pp "* ]] && continue
+      plain_ports+=("$_pp"); _seen="$_seen$_pp "
+    done
+    IFS=',' read -ra ssl_ports <<< "$T3_SSL_PORTS"
   fi
 
   # GIOP 1.2 LocateRequest for object key "NameService"; an open IIOP listener
@@ -319,14 +363,24 @@ scan_surface() {
   local giop_probe='\x47\x49\x4f\x50\x01\x02\x00\x03\x00\x00\x00\x17\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x0b\x4e\x61\x6d\x65\x53\x65\x72\x76\x69\x63\x65'
 
   # Probe one port with a given connector command; sets t3_hit / iiop_hit.
+  # Match on the FIRST 4 bytes of the reply, not anywhere in it: a WebLogic T3
+  # reply starts with "HELO" and an IIOP LocateReply starts with the "GIOP"
+  # magic. Grepping anywhere gave false positives because an HTTP server echoes
+  # our "GIOP"/handshake bytes back inside its 400 error page (and the SSL probe
+  # to an HTTPS :443 would do the same), flagging phantom IIOP.
   local wlport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" p t3_hit iiop_hit
   probe_port() {   # $1=port  $2=connector cmd
-    local pp="$1" conn="$2"
+    local pp="$1" conn="$2" r
     t3_hit=""; iiop_hit=""
-    echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:${pp}\n\n" | \
-      $TO $conn "$host" "$pp" 2>/dev/null | grep -qai "HELO" && t3_hit=1
-    printf "$giop_probe" | \
-      $TO $conn "$host" "$pp" 2>/dev/null | grep -qa "GIOP" && iiop_hit=1
+    # `|| true`: head closes the pipe after 4 bytes, so the connector gets
+    # SIGPIPE and exits non-zero; with pipefail+set -e that would abort the
+    # whole scan. The 4-byte prefix is all we need to identify the protocol.
+    r=$(echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:${pp}\n\n" | \
+      $TO $conn "$host" "$pp" 2>/dev/null | head -c 4) || true
+    [[ "$r" == "HELO" ]] && t3_hit=1
+    r=$(printf "$giop_probe" | \
+      $TO $conn "$host" "$pp" 2>/dev/null | head -c 4) || true
+    [[ "$r" == "GIOP" ]] && iiop_hit=1
     return 0
   }
 
@@ -349,6 +403,16 @@ scan_surface() {
       [[ -n "$iiop_hit" ]] && iiop_ssl=1
       if [[ -n "$t3_ssl$iiop_ssl" ]]; then break; fi
     done
+  fi
+
+  # 3) T3/IIOP over TLS on the WEB port itself (443) — catches a TCP-passthrough
+  #    load balancer that forwards the WebLogic SSL channel on 443 (so T3s/iiops
+  #    ride the same socket as HTTPS). Only when nothing else was found and the
+  #    web port is 443. Detect-only (SSL), reported as T3-ssl/IIOP-ssl.
+  if [[ -z "$t3_open$iiop_open$t3_ssl$iiop_ssl" && -n "$ssl_cmd" && "$port" == "443" ]]; then
+    probe_port 443 "$ssl_cmd"
+    [[ -n "$t3_hit" ]]  && t3_ssl=1
+    [[ -n "$iiop_hit" ]] && iiop_ssl=1
   fi
 
   [[ -n "$t3_open"   ]] && surfaces="${surfaces:+$surfaces,}T3"
@@ -400,9 +464,19 @@ run_nuclei_for_target() {
   # (templates speak plaintext; SSL surfaces are report-only, handled in Phase 1).
   has_surface() { case ",$surfaces," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
-  # HTTP templates: any console surface (HTTP / HTTP-restricted / HTTP-bypass)
-  if echo "$surfaces" | grep -q "HTTP"; then
+  # Console templates: a console surface (HTTP / HTTP-restricted / HTTP-bypass).
+  # Exact tokens so "HTTP-app" does NOT pull in the console preauth set.
+  if has_surface HTTP || has_surface HTTP-restricted || has_surface HTTP-bypass; then
     for t in "${HTTP_TEMPLATES[@]}"; do
+      [[ -f "$t" ]] && templates+=("-t" "$t")
+    done
+  fi
+
+  # HTTP app-surface templates: WebLogic HTTP RCE/SSRF endpoints reachable
+  # through the proxy (wls-wsat/_async/ws_utc/uddiexplorer) — the main avenue
+  # when the console is hidden/blocked.
+  if has_surface HTTP-app; then
+    for t in "${HTTP_APP_TEMPLATES[@]}"; do
       [[ -f "$t" ]] && templates+=("-t" "$t")
     done
   fi
