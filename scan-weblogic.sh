@@ -206,6 +206,10 @@ scan_surface() {
 
   local result_file="$SURFACE_DIR/row${row}.txt"
   local surfaces=""
+  # Human-readable evidence for each detected surface, written to column E in
+  # Phase 3 alongside the machine token (which stays clean for has_surface).
+  local reason=""
+  addr() { reason="${reason:+$reason$'\n'}• $1"; }
 
   if $DRY_RUN; then
     echo "HTTP,T3,IIOP" > "$result_file"
@@ -243,15 +247,18 @@ scan_surface() {
     200)
       if printf '%s' "$body" | grep -qiE "$wls_fp"; then
         surfaces="HTTP"
+        addr "HTTP: /console/login 200 + WebLogic fingerprint in body"
       fi
       ;;
     301|302|303|307|308)
       if printf '%s' "$redirect" | grep -qiE 'console|LoginForm|j_security_check'; then
         surfaces="HTTP"
+        addr "HTTP: $http_code redirect to console/login ($redirect)"
       fi
       ;;
     401|403)
       surfaces="HTTP-restricted"
+      addr "HTTP-restricted: $http_code on /console/login (console deployed but access-blocked; preauth CVEs may still bypass)"
       ;;
   esac
 
@@ -277,9 +284,11 @@ scan_surface() {
       tbody=${tout%__META__*}
       if [[ "$tcode" == "200" ]] && printf '%s' "$tbody" | grep -qiE "$trav_markers"; then
         surfaces="HTTP-bypass"       # auth-bypass handler reachable (likely vuln)
+        addr "HTTP-bypass: CVE-2020-14882 traversal returned 200 with console markers ($trav_url)"
         break
       elif [[ "$tcode" == "401" || "$tcode" == "403" ]]; then
         surfaces="HTTP-restricted"   # console deployed but path blocked/patched
+        addr "HTTP-restricted: $tcode on 14882 traversal ($trav_url); console deployed but blocked/patched"
         # keep trying the other encoding in case one variant is filtered
       fi
     done
@@ -307,6 +316,7 @@ scan_surface() {
       abody=${aout%__META__*}
       if [[ "$acode" =~ ^(200|401|403|405|500)$ ]] && printf '%s' "$abody" | grep -qiE "$app_markers"; then
         surfaces="${surfaces:+$surfaces,}HTTP-app"
+        addr "HTTP-app: WebLogic HTTP endpoint reachable ($app_url -> $acode)"
         break
       fi
     done
@@ -368,7 +378,7 @@ scan_surface() {
   # magic. Grepping anywhere gave false positives because an HTTP server echoes
   # our "GIOP"/handshake bytes back inside its 400 error page (and the SSL probe
   # to an HTTPS :443 would do the same), flagging phantom IIOP.
-  local wlport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" p t3_hit iiop_hit
+  local wlport="" sslport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" p t3_hit iiop_hit
   probe_port() {   # $1=port  $2=connector cmd
     local pp="$1" conn="$2" r
     t3_hit=""; iiop_hit=""
@@ -401,7 +411,7 @@ scan_surface() {
       probe_port "$p" "$ssl_cmd"
       [[ -n "$t3_hit" ]] && t3_ssl=1
       [[ -n "$iiop_hit" ]] && iiop_ssl=1
-      if [[ -n "$t3_ssl$iiop_ssl" ]]; then break; fi
+      if [[ -n "$t3_ssl$iiop_ssl" ]]; then sslport="$p"; break; fi
     done
   fi
 
@@ -411,18 +421,22 @@ scan_surface() {
   #    web port is 443. Detect-only (SSL), reported as T3-ssl/IIOP-ssl.
   if [[ -z "$t3_open$iiop_open$t3_ssl$iiop_ssl" && -n "$ssl_cmd" && "$port" == "443" ]]; then
     probe_port 443 "$ssl_cmd"
-    [[ -n "$t3_hit" ]]  && t3_ssl=1
-    [[ -n "$iiop_hit" ]] && iiop_ssl=1
+    [[ -n "$t3_hit" ]]  && { t3_ssl=1; sslport=443; }
+    [[ -n "$iiop_hit" ]] && { iiop_ssl=1; sslport=443; }
+    [[ -n "$t3_ssl$iiop_ssl" ]] && addr "via TCP-passthrough LB on :443 (WebLogic SSL channel on the HTTPS port)"
   fi
 
-  [[ -n "$t3_open"   ]] && surfaces="${surfaces:+$surfaces,}T3"
-  [[ -n "$iiop_open" ]] && surfaces="${surfaces:+$surfaces,}IIOP"
-  [[ -n "$t3_ssl"    ]] && surfaces="${surfaces:+$surfaces,}T3-ssl"
-  [[ -n "$iiop_ssl"  ]] && surfaces="${surfaces:+$surfaces,}IIOP-ssl"
+  if [[ -n "$t3_open" ]];   then surfaces="${surfaces:+$surfaces,}T3";        addr "T3: HELO handshake on :$wlport"; fi
+  if [[ -n "$iiop_open" ]]; then surfaces="${surfaces:+$surfaces,}IIOP";      addr "IIOP: GIOP LocateReply on :$wlport"; fi
+  if [[ -n "$t3_ssl" ]];    then surfaces="${surfaces:+$surfaces,}T3-ssl";    addr "T3-ssl: HELO over TLS on :$sslport (detect-only; templates can't deliver over TLS)"; fi
+  if [[ -n "$iiop_ssl" ]];  then surfaces="${surfaces:+$surfaces,}IIOP-ssl";  addr "IIOP-ssl: GIOP over TLS on :$sslport (detect-only)"; fi
 
   [[ -z "$surfaces" ]] && surfaces="NONE"
+  [[ "$surfaces" == "NONE" ]] && reason="no HTTP console / HTTP-app / T3 / IIOP surface responded"
 
   echo "$surfaces" > "$result_file"
+  # Human-readable evidence for column E (Phase 3 reads this alongside tokens).
+  printf '%s' "$reason" > "$SURFACE_DIR/row${row}.reason"
   # Pin the plaintext WebLogic port for Phase 2 templates (falls back to first).
   echo "${wlport:-${plain_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
   echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces"
@@ -607,7 +621,26 @@ row_end = int(sys.argv[4])
 wb = openpyxl.load_workbook(excel)
 ws = wb.active
 
+TITLES = ["Attack Surface", "Vulnerabilities", "Scan Detail"]
+
+# Locate the "Note" column by header (fallback to D=4) so the scan block always
+# lands right after it regardless of prior shifts.
 note_col = 4
+for c in range(1, ws.max_column + 1):
+    if str(ws.cell(1, c).value or "").strip().lower() == "note":
+        note_col = c
+        break
+
+# Idempotent: remove ANY previously-inserted scan columns (a prior bug inserted
+# a fresh block every run, duplicating E/F/G and pushing real columns right).
+# Delete all columns whose header matches one of our titles, right-to-left, then
+# insert exactly one fresh block. Re-running now overwrites instead of stacking.
+stale = [c for c in range(1, ws.max_column + 1)
+         if str(ws.cell(1, c).value or "").strip() in TITLES]
+removed = len(stale)
+for c in sorted(stale, reverse=True):
+    ws.delete_cols(c, 1)
+
 surface_col = note_col + 1
 vuln_col = note_col + 2
 detail_col = note_col + 3
@@ -628,7 +661,14 @@ for row in range(row_start, row_end + 1):
     surfaces = ""
     if os.path.isfile(sf):
         surfaces = open(sf).read().strip()
-    ws.cell(row, surface_col, surfaces)
+    rfn = os.path.join(work_dir, "surfaces", f"row{row}.reason")
+    reason = ""
+    if os.path.isfile(rfn):
+        reason = open(rfn).read().strip()
+    # Column E = machine tokens on the first line, then the evidence/why below.
+    cell_e = surfaces + ("\n" + reason if reason else "")
+    c = ws.cell(row, surface_col, cell_e)
+    c.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical="top")
 
     rf = os.path.join(work_dir, "results", f"row{row}.json")
     cves = []
@@ -669,7 +709,13 @@ for col in [surface_col, vuln_col, detail_col]:
 
 wb.save(excel)
 print(f"Results written to {excel}")
-print(f"  Columns inserted: E (Attack Surface), F (Vulnerabilities), G (Scan Detail)")
+col_letter = openpyxl.utils.get_column_letter
+print(f"  Scan columns at {col_letter(surface_col)} (Attack Surface), "
+      f"{col_letter(vuln_col)} (Vulnerabilities), {col_letter(detail_col)} (Scan Detail)")
+if removed > 3:
+    print(f"  Cleaned {removed - 3} leftover duplicate scan column(s) from prior runs")
+elif removed:
+    print(f"  Overwrote existing scan columns (no duplication)")
 PYWRITE
 
 echo ""
