@@ -54,29 +54,20 @@ How it was built (reproducible method for the other T3/IIOP JNDI CVEs):
 
 **Signing:** nuclei refuses `javascript:` templates whose signature it cannot
 verify. These templates are **already signed** (signer `tr1la`); the matching
-public certificate ships here as [`nuclei-user.crt`](nuclei-user.crt). You have two
-options:
+public certificate ships here as [`nuclei-user.crt`](nuclei-user.crt). Run them
+as-is by pointing nuclei at the shipped certificate so it trusts the `tr1la`
+signature (no re-signing, no private key needed):
 
-- **Run them as-is** — point nuclei at the shipped certificate so it trusts the
-  `tr1la` signature (no re-signing, no private key needed):
-
-  ```bash
-  export NUCLEI_USER_CERTIFICATE="Nuclei template/nuclei-user.crt"
-  nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
-  # -> "Executing N signed templates from tr1la"
-  ```
-
-- **Re-sign with your own key** — if you edit a template (its `# digest:` then no
-  longer matches) or prefer your own signer, sign in place (auto-generates a local
-  key on first use) and run:
-
-  ```bash
-  nuclei -sign -t "Nuclei template/CVE-2024-20931-active-oast.yaml"
-  nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
-  ```
+```bash
+export NUCLEI_USER_CERTIFICATE="Nuclei template/nuclei-user.crt"
+nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
+# -> "Executing N signed templates from tr1la"
+```
 
 Only the **public** cert is published; the private signing key
-(`nuclei-user-private-key.pem`) is never committed.
+(`nuclei-user-private-key.pem`) is never committed. Use the shipped cert rather
+than re-signing: nuclei does not let you overwrite the existing signature on these
+`javascript:` templates with your own key.
 
 **Version coverage:** verified on **both WebLogic 12.2.1.4.0 and 14.1.1.0.0**
 with the identical byte stream (one `javascript:` template, no version branching).
@@ -230,7 +221,7 @@ on 10.3.6.
 ## 4. Usage
 
 First, trust the shipped signer cert so nuclei will run the signed `javascript:`
-templates (once per shell; see **Signing** above for the re-sign alternative):
+templates (once per shell; see **Signing** above):
 
 ```bash
 export NUCLEI_USER_CERTIFICATE="Nuclei template/nuclei-user.crt"
