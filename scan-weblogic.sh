@@ -571,21 +571,39 @@ run_nuclei_retry() {
   printf '%s' "$out"
 }
 
-# Full-repo fallback: scan $1 with every upstream template, minus the ones the
-# script already ran ($FULL_EXCLUDE). Appends findings to $result_file (caller's
-# scope). Single pass — the sweep is already exhaustive, so the per-batch OAST
-# retry is not applied here. Routed through the HTTP proxy like the other HTTP runs.
+# Full-repo fallback: scan $1 with the upstream templates, keeping only HIGH and
+# CRITICAL severity ("-severity critical,high" — also trims the set from thousands
+# of templates to the high-impact ones, so the sweep is far faster). Appends
+# findings to $result_file (caller's scope). Single pass — the sweep is already
+# exhaustive, so the per-batch OAST retry is not applied. Routed through the HTTP
+# proxy like the other HTTP runs.
+#   $2 = exclude mode:
+#     "exclude" (default) — skip the upstream templates the script already ran
+#                           ($FULL_EXCLUDE); used when a surface WAS found and the
+#                           curated set already ran (no point re-running them).
+#     "all"               — exclude nothing; used for NONE-surface targets, where
+#                           the curated set NEVER ran (no surface fired it), so the
+#                           full sweep must still cover those templates too (a
+#                           surface probe can false-negative, e.g. WAF-hidden
+#                           console / filtered T3).
 run_full_sweep() {
-  local target="$1" out=""
+  local target="$1" mode="${2:-exclude}" out=""
   if [[ ! -d "$UPSTREAM_TPL" ]]; then
     echo "    [row ${row:-?}] full-fallback: template dir $UPSTREAM_TPL not found, skipping" >&2
     return
   fi
-  echo "    [row ${row:-?}] full nuclei sweep against $target (entire repo minus curated set; slow)..." >&2
+  local excl=()
+  if [[ "$mode" == "exclude" ]]; then
+    excl=("${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}")
+    echo "    [row ${row:-?}] full nuclei sweep (high+critical, minus curated set) against $target; slow..." >&2
+  else
+    echo "    [row ${row:-?}] full nuclei sweep (high+critical, all templates) against $target; slow..." >&2
+  fi
   local nuclei_proxy=()
   [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
   out=$(nuclei -u "$target" -t "$UPSTREAM_TPL" \
-    "${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}" \
+    "${excl[@]+"${excl[@]}"}" \
+    -severity critical,high \
     "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
     -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
     -no-color -jsonl -silent </dev/null 2>/dev/null || true)
