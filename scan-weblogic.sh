@@ -143,14 +143,14 @@ T3_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2024-20931-active-oast.yaml"
 )
 
-# HTTP app-surface — WebLogic HTTP RCE/SSRF endpoints that a reverse proxy still
-# forwards even when /console is hidden or WAF-blocked (wls-wsat, _async, ws_utc,
-# uddiexplorer). Matched to the "HTTP-app" fallback surface (Phase 1 #1).
+# HTTP app-surface — WebLogic HTTP RCE endpoints that a reverse proxy still
+# forwards even when /console is hidden or WAF-blocked (wls-wsat, _async, ws_utc).
+# Matched to the "HTTP-app" fallback surface (Phase 1 #1). CVE-2014-4210
+# (uddiexplorer SSRF) is intentionally excluded: medium impact (SSRF only, no RCE).
 HTTP_APP_TEMPLATES=(
   "$UPSTREAM_TPL/http/cves/2017/CVE-2017-10271.yaml"
   "$UPSTREAM_TPL/http/cves/2019/CVE-2019-2725.yaml"
   "$UPSTREAM_TPL/http/cves/2018/CVE-2018-2894.yaml"
-  "$UPSTREAM_TPL/http/cves/2014/CVE-2014-4210.yaml"
 )
 
 # IIOP delivery — requires T3 (version probe) + IIOP (payload delivery)
@@ -294,20 +294,19 @@ scan_surface() {
     done
   fi
 
-  # ── HTTP app-surface: WebLogic HTTP RCE/SSRF endpoints (wls-wsat, _async,
-  #    ws_utc, uddiexplorer) that a reverse proxy still forwards even when
-  #    /console is hidden or WAF-blocked. Runs whenever the web port answered at
-  #    all (http_code != 000) so it also complements a confirmed console. GETs
-  #    are benign (no payload); a WebLogic-specific response marks "HTTP-app"
-  #    and Phase 2 runs the deser/SSRF templates (nuclei's OAST confirms RCE).
+  # ── HTTP app-surface: WebLogic HTTP RCE endpoints (wls-wsat, _async, ws_utc)
+  #    that a reverse proxy still forwards even when /console is hidden or
+  #    WAF-blocked. Runs whenever the web port answered at all (http_code != 000)
+  #    so it also complements a confirmed console. GETs are benign (no payload);
+  #    a WebLogic-specific response marks "HTTP-app" and Phase 2 runs the deser
+  #    templates (nuclei's OAST confirms RCE).
   if [[ "$http_code" != "000" ]]; then
-    local app_markers='CoordinatorPortType|AsyncResponseService|wls-wsat|ws_utc|WebServiceTestPage|uddiexplorer|UDDI|XMLDecoder|faultstring|wsdl:definitions'
+    local app_markers='CoordinatorPortType|AsyncResponseService|wls-wsat|ws_utc|WebServiceTestPage|XMLDecoder|faultstring|wsdl:definitions'
     local app_url aout acode abody
     for app_url in \
       "${url%/}/wls-wsat/CoordinatorPortType" \
       "${url%/}/_async/AsyncResponseService" \
-      "${url%/}/ws_utc/begin.do" \
-      "${url%/}/uddiexplorer/"; do
+      "${url%/}/ws_utc/begin.do"; do
       aout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
         --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
         -w '__META__%{http_code}' \
