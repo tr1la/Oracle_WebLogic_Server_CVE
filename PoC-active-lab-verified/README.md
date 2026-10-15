@@ -43,12 +43,42 @@ confirmable — see the main index). Shared tooling: `sockdump.c` (capture shim)
 
 Result of the "port-from-PoC + verify-in-lab" effort for the T3/IIOP JNDI CVEs.
 
+## 0b. WebLogic 10.3.6 (11gR1) PoC variants
+
+The PoCs above target 12.2.1.4 / 14.1.1. WebLogic **10.3.6** (11gR1, JDK 1.6.0_45,
+Coherence 3.7.1) needs its own captures: the gadget class serialVersionUIDs differ,
+JDK6 lacks some triggers, and several 12c carrier classes are absent — so these are
+kept as separate `*_1036.java` sources, compiled + run INSIDE the 10.3.6 container
+(vulhub `weblogic:10.3.6.0-2017`, T3 on `127.0.0.1:17001`). Each drives the
+`ver=="10"` branch of its sibling nuclei template and is lab-verified (callback /
+interactsh from the 10.3.6 JVM).
+
+| CVE | 10.3.6 PoC source | Proto | How it differs from the 12.x/14.x PoC |
+|-----|-------------------|-------|----------------------------------------|
+| CVE-2020-2551  | `src/CVE-2020-2551/CVE_2020_2551_IIOP_1036.java`   | IIOP | Spring 2.5.3 repackaged `JtaTransactionManager` (different RID); native 11g capture |
+| CVE-2020-2883  | `src/CVE-2020-2883/CVE_2020_2883_IIOP_1036.java`   | IIOP | PriorityQueue `compare()` trigger (JDK6-safe); Coherence 3.7.1 RIDs |
+| CVE-2020-14841 | `src/CVE-2020-14841/CVE_2020_14841_IIOP_1036.java` | IIOP | `LockVersionExtractor` from 10.3.6 toplink-grid.jar; needs integration jars on classpath |
+| CVE-2021-2211  | `src/CVE-2021-2211/CVE_2021_2211_T3_1036.java` (+ fake `com/tangosol/net/security/PermissionInfo.java`) | T3 | carrier switched to `PermissionInfo` (base Coherence) since `coherence.servlet.AttributeHolder` is Coherence*Web (absent on 10.3.6) |
+| CVE-2021-2394  | `src/CVE-2021-2394/CVE_2021_2394_IIOP_1036.java`   | IIOP | `FilterExtractor` (10.3.6 toplink-grid) via PriorityQueue/IIOP instead of the 12.x T3 two-stage TopNAggregator chain |
+
+Build/run inside the 10.3.6 container with that build's `weblogic.jar` +
+`coherence.jar` (3.7.1), plus `toplink-grid.jar` + `eclipselink.jar` from
+`$MW_HOME/modules/` for 14841/2394 (drop them in `$DOMAIN_HOME/lib/` so the server
+classpath can resolve the gadget). Each file's header has the exact `javac`/`java`
+lines and the `__OAST__`/marker-host placeholder. Coherence-group CVEs NOT applicable
+to 10.3.6/Coherence 3.7.1 (gadget class or JDK6 trigger absent) are documented in the
+sibling templates' coverage notes: CVE-2020-14645 (UniversalExtractor is 12.2.1+),
+CVE-2020-2555 (JDK6 BadAttributeValueExpException has no readObject), CVE-2020-14756
+(MvelExtractor/TopNAggregator absent).
+
 ## 1. What was verified ✅
 
 | Item | Status |
 |------|--------|
 | Lab A | `container-registry.oracle.com/middleware/weblogic:12.2.1.4`, T3 on `127.0.0.1:7001`, HELO → `12.2.1.4.0` |
 | Lab B | `container-registry.oracle.com/middleware/weblogic:14.1.1.0-dev-11`, T3 on `127.0.0.1:7101`, HELO → `14.1.1.0.0` |
+| Lab C | vulhub `weblogic:10.3.6.0-2017` (11gR1, JDK 1.6.0_45, Coherence 3.7.1), T3 on `127.0.0.1:17001`, HELO → `10.3.6.0` |
+| CVE-2020-2551 / 2883 / 14841 / 2021-2394 (IIOP) + 2021-2211 (T3) — 10.3.6 `*_1036` PoCs | **FIRED** on Lab C — server-side JNDI/RMI callback (2211: external-DTD fetch, `User-Agent: Java1.6.0_45`); sibling `ver=="10"` template branches MATCHED on Lab C |
 | CVE-2023-21839 active nuclei template (upstream) | **MATCHED** on Lab A (interactsh DNS callback) |
 | CVE-2024-20931 exploit — Java PoC | **FIRED** on Lab A — server JRMP/RMI callback (`0x4a524d49` = `JRMI`) |
 | CVE-2024-20931 active nuclei template (`../Nuclei template/CVE-2024-20931-active-oast.yaml`) | **MATCHED on both Lab A AND Lab B** with identical bytes — see `../Nuclei template/README.md` |
