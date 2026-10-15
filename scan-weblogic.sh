@@ -11,6 +11,7 @@ set -euo pipefail
 # Usage:
 #   chmod +x scan-weblogic.sh
 #   ./scan-weblogic.sh [--dry-run] [--rows 2-79] [--timeout 30] [--rate 5]
+#                      [--attempts 3]   # retry a batch that returns no results
 #
 # Requires: nuclei, python3, openpyxl, nc (netcat)
 ###############################################################################
@@ -30,6 +31,12 @@ TIMEOUT=30
 # (T3+IIOP) per candidate port, a dead backend costs ~2*PROBE_TIMEOUT, not 60s.
 PROBE_TIMEOUT=6
 RATE_LIMIT=5
+# Max nuclei attempts per surface batch. OAST matchers (DNS/RMI callback) are
+# async: a miss on the interactsh poll window shows up as "no results", so re-run
+# the batch up to this many times before concluding the target is clean. Only
+# retried when a batch yields ZERO findings (a batch with >=1 hit is not re-run).
+# Override with --attempts N (1 disables retrying).
+NUCLEI_ATTEMPTS=3
 DRY_RUN=false
 PROXY=""
 SOCKS=""
@@ -69,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --t3-ports)  T3_PORTS="$2"; shift 2 ;;
     --t3-ssl-ports) T3_SSL_PORTS="$2"; shift 2 ;;
     --probe-timeout) PROBE_TIMEOUT="$2"; shift 2 ;;
+    --attempts)  NUCLEI_ATTEMPTS="$2"; shift 2 ;;
     --port-scan) PORT_SCAN=true; shift ;;
     --scan-ports) SCAN_PORTS="$2"; shift 2 ;;
     --excel)     EXCEL="$2"; shift 2 ;;
@@ -452,6 +460,21 @@ echo "[*] Phase 2: nuclei CVE scan..."
 RESULTS_DIR="$WORK_DIR/results"
 mkdir -p "$RESULTS_DIR"
 
+# Run a nuclei batch, retrying while it yields NO results (async OAST miss), up to
+# $NUCLEI_ATTEMPTS total tries. The matched jsonl is printed to stdout for the
+# caller to capture; retry progress goes to stderr so it never lands in the result
+# file. "$@" is the full nuclei argv (may be prefixed with a proxychains wrapper).
+run_nuclei_retry() {
+  local attempt out=""
+  for (( attempt = 1; attempt <= NUCLEI_ATTEMPTS; attempt++ )); do
+    out=$("$@" </dev/null 2>/dev/null || true)
+    [[ -n "$out" ]] && break
+    [[ $attempt -lt $NUCLEI_ATTEMPTS ]] && \
+      echo "    [row ${row:-?}] no results (attempt $attempt/$NUCLEI_ATTEMPTS), retrying..." >&2
+  done
+  printf '%s' "$out"
+}
+
 run_nuclei_for_target() {
   local row="$1" url="$2"
   local surface_file="$SURFACE_DIR/row${row}.txt"
@@ -541,18 +564,22 @@ run_nuclei_for_target() {
     fi
   done
 
-  # HTTP templates through Burp proxy
+  # Start fresh: both batches below retry-on-no-results and APPEND their captured
+  # findings, so the result file must be truncated once up front.
+  : > "$result_file"
+
+  # HTTP templates through Burp proxy (retried while no results)
   if [[ ${#http_tpls[@]} -gt 0 ]]; then
     local nuclei_proxy=()
     [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
-    nuclei -u "$url" \
+    local http_out
+    http_out=$(run_nuclei_retry nuclei -u "$url" \
       "${http_tpls[@]}" \
       "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
       -timeout "$TIMEOUT" \
       -rate-limit "$RATE_LIMIT" \
-      -no-color -jsonl -silent \
-      -o "$result_file" \
-      </dev/null 2>/dev/null || true
+      -no-color -jsonl -silent)
+    [[ -n "$http_out" ]] && printf '%s\n' "$http_out" >> "$result_file"
   fi
 
   # T3/IIOP templates through SOCKS via proxychains4.
@@ -569,13 +596,13 @@ run_nuclei_for_target() {
     # the port (which would invalidate the `# digest:` signature and make nuclei
     # silently skip the template) and no re-signing. Verified: a template with a
     # hardcoded Port: "7001" run against `-u host:17001` resolves Port=17001.
-    $nuclei_wrap nuclei -u "$host_only:$wlport" \
+    local raw_out
+    raw_out=$(run_nuclei_retry $nuclei_wrap nuclei -u "$host_only:$wlport" \
       "${raw_tpls[@]}" \
       -timeout "$TIMEOUT" \
       -rate-limit "$RATE_LIMIT" \
-      -no-color -jsonl -silent \
-      >> "$result_file" \
-      </dev/null 2>/dev/null || true
+      -no-color -jsonl -silent)
+    [[ -n "$raw_out" ]] && printf '%s\n' "$raw_out" >> "$result_file"
   fi
 
   local hits=0
