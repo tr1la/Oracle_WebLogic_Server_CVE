@@ -587,32 +587,23 @@ run_nuclei_retry() {
 # (caller's scope). Single pass — the sweep is already
 # exhaustive, so the per-batch OAST retry is not applied. Routed through the HTTP
 # proxy like the other HTTP runs.
-#   $2 = exclude mode:
-#     "exclude" (default) — skip the upstream templates the script already ran
-#                           ($FULL_EXCLUDE); used when a surface WAS found and the
-#                           curated set already ran (no point re-running them).
-#     "all"               — exclude nothing; used for NONE-surface targets, where
-#                           the curated set NEVER ran (no surface fired it), so the
-#                           full sweep must still cover those templates too (a
-#                           surface probe can false-negative, e.g. WAF-hidden
-#                           console / filtered T3).
+#
+# Always excludes the upstream templates the script already ran ($FULL_EXCLUDE):
+# when a surface was found they already ran (no point re-running); and a
+# NONE-surface target has no surface for them anyway (the curated set targets
+# specific surfaces — console / wls-wsat / T3 — all of which Phase 1 already probed,
+# 14882 traversal included), so re-running the known WebLogic templates adds nothing.
 run_full_sweep() {
-  local target="$1" mode="${2:-exclude}" out=""
+  local target="$1" out=""
   if [[ ! -d "$UPSTREAM_TPL" ]]; then
     echo "    [row ${row:-?}] full-fallback: template dir $UPSTREAM_TPL not found, skipping" >&2
     return
   fi
-  local excl=()
-  if [[ "$mode" == "exclude" ]]; then
-    excl=("${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}")
-    echo "    [row ${row:-?}] full nuclei sweep (high+critical, minus curated set) against $target; slow..." >&2
-  else
-    echo "    [row ${row:-?}] full nuclei sweep (high+critical, all templates) against $target; slow..." >&2
-  fi
+  echo "    [row ${row:-?}] full nuclei sweep (high+critical, minus curated set) against $target; slow..." >&2
   local nuclei_proxy=()
   [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
   out=$(nuclei -u "$target" -t "$UPSTREAM_TPL" \
-    "${excl[@]+"${excl[@]}"}" \
+    "${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}" \
     -severity "$FULL_SWEEP_SEVERITY" \
     "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
     -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
