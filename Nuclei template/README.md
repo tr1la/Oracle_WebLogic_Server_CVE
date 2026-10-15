@@ -52,13 +52,31 @@ How it was built (reproducible method for the other T3/IIOP JNDI CVEs):
      so the server completes the lookup→callback before `Close()` — otherwise
      nuclei closes too early and nothing fires.
 
-**Signing:** nuclei refuses unsigned `javascript:` templates. Sign once with your
-own key:
+**Signing:** nuclei refuses `javascript:` templates whose signature it cannot
+verify. These templates are **already signed** (signer `tr1la`); the matching
+public certificate ships here as [`nuclei-user.crt`](nuclei-user.crt). You have two
+options:
 
-```bash
-nuclei -sign -t "Nuclei template/CVE-2024-20931-active-oast.yaml"
-nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
-```
+- **Run them as-is** — point nuclei at the shipped certificate so it trusts the
+  `tr1la` signature (no re-signing, no private key needed):
+
+  ```bash
+  export NUCLEI_USER_CERTIFICATE="Nuclei template/nuclei-user.crt"
+  nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
+  # -> "Executing N signed templates from tr1la"
+  ```
+
+- **Re-sign with your own key** — if you edit a template (its `# digest:` then no
+  longer matches) or prefer your own signer, sign in place (auto-generates a local
+  key on first use) and run:
+
+  ```bash
+  nuclei -sign -t "Nuclei template/CVE-2024-20931-active-oast.yaml"
+  nuclei -t "Nuclei template/CVE-2024-20931-active-oast.yaml" -u target:7001
+  ```
+
+Only the **public** cert is published; the private signing key
+(`nuclei-user-private-key.pem`) is never committed.
 
 **Version coverage:** verified on **both WebLogic 12.2.1.4.0 and 14.1.1.0.0**
 with the identical byte stream (one `javascript:` template, no version branching).
@@ -211,6 +229,13 @@ on 10.3.6.
 
 ## 4. Usage
 
+First, trust the shipped signer cert so nuclei will run the signed `javascript:`
+templates (once per shell; see **Signing** above for the re-sign alternative):
+
+```bash
+export NUCLEI_USER_CERTIFICATE="Nuclei template/nuclei-user.crt"
+```
+
 Validate the templates:
 
 ```bash
@@ -220,7 +245,7 @@ nuclei -validate -t "Nuclei template/"
 Run a single CVE against a target (include the T3 port):
 
 ```bash
-nuclei -t "Nuclei template/CVE-2023-21839.yaml" -u target:7001
+nuclei -t "Nuclei template/CVE-2023-21839-active-oast.yaml" -u target:7001
 ```
 
 Run the whole folder against a list:
@@ -228,6 +253,11 @@ Run the whole folder against a list:
 ```bash
 nuclei -t "Nuclei template/" -l targets.txt
 ```
+
+> The 10.3.6/12.x/14.x branches are auto-selected by each template's T3-HELO
+> version probe — the same command covers all three. OAST matchers are DNS/RMI
+> callback based; if a run shows a transient "No results", re-run once (the
+> interactsh poll window can miss an async callback).
 
 ## 5. Caveats & disclaimer
 
