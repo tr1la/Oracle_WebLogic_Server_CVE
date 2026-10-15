@@ -53,14 +53,11 @@ SOCKS_AUTH=""
 # T3/IIOP never run on 80/443; the default listen port is 7001 (7002 = SSL,
 # which a plaintext probe cannot detect). Override with --t3-ports 7001,7005.
 T3_PORTS="7001"
-# WebLogic SSL listen ports probed for T3/IIOP over TLS via `ncat --ssl`.
-# Detect-only: reported as T3-ssl/IIOP-ssl (the plaintext nuclei templates
-# cannot deliver over TLS). Empty by default: a sample of this list's targets
-# showed all reachable T3 listeners are plaintext (7001/8081) and the 443/80
-# hosts are reverse-proxied web fronts whose backend T3 port is not exposed, so
-# probing 7002 mostly just times out. Enable with --t3-ssl-ports 7002 when a
-# host is suspected to expose T3 over SSL.
-T3_SSL_PORTS=""
+# T3/IIOP SSL binding is chosen automatically from the URL scheme: an https:// URL
+# probes T3/IIOP over TLS (ncat --ssl), an http:// URL probes plaintext (nc). The
+# same candidate ports are used either way (see --port-scan below); SSL hits are
+# reported T3-ssl/IIOP-ssl (detect-only — plaintext nuclei templates can't deliver
+# over TLS). SSL probing needs `ncat`.
 # Optional T3/IIOP port sweep (--port-scan): also probe this candidate list of
 # managed-server ports for T3/IIOP, on top of --t3-ports (reverse-proxied web URL)
 # or the URL's own port (explicit-port URL). Catches the case where T3/IIOP live on
@@ -104,7 +101,6 @@ while [[ $# -gt 0 ]]; do
     --socks)     SOCKS="$2"; shift 2 ;;
     --socks-auth) SOCKS_AUTH="$2"; shift 2 ;;
     --t3-ports)  T3_PORTS="$2"; shift 2 ;;
-    --t3-ssl-ports) T3_SSL_PORTS="$2"; shift 2 ;;
     --probe-timeout) PROBE_TIMEOUT="$2"; shift 2 ;;
     --attempts)  NUCLEI_ATTEMPTS="$2"; shift 2 ;;
     --port-scan) PORT_SCAN=true; shift ;;
@@ -444,10 +440,9 @@ scan_surface() {
     [[ -n "$SOCKS_AUTH" ]] && nc_cmd="$nc_cmd --proxy-auth $SOCKS_AUTH"
   fi
 
-  # SSL-wrapped variant (WebLogic SSL listen port, default 7002) via ncat --ssl.
-  # Used only for surface detection: the nuclei T3/IIOP templates speak plaintext
-  # (net.Open tcp), so an SSL-only surface is reported (T3-ssl/IIOP-ssl) but NOT
-  # auto-exploited here — flag it for manual work (ysoserial t3s / corbaloc:iiops).
+  # ncat --ssl connector — probes T3/IIOP over TLS when the URL is https. SSL hits
+  # are reported T3-ssl/IIOP-ssl (detect-only: the plaintext nuclei templates can't
+  # deliver over TLS — flag for manual ysoserial t3s / corbaloc:iiops). Needs ncat.
   local ssl_cmd=""
   if command -v ncat &>/dev/null; then
     ssl_cmd="ncat --ssl -w $PROBE_TIMEOUT"
@@ -457,42 +452,35 @@ scan_surface() {
     fi
   fi
 
-  # Build the T3/IIOP candidate port set. HTTP always stays on the URL's own port
-  # (probed separately above); this only decides where to look for T3/IIOP.
+  # Build the T3/IIOP candidate port set (same list for http & https; the scheme
+  # only decides plaintext-vs-SSL below). HTTP console/app stay on the URL's own
+  # port (probed separately above); this is only where to look for T3/IIOP.
   local url_port=""
   [[ "$url" =~ ^https?://[^/]+:([0-9]+) ]] && url_port="${BASH_REMATCH[1]}"
-  local pset sslset="$T3_SSL_PORTS"
+  local pset
   if [[ -n "$url_port" && "$url_port" != "80" && "$url_port" != "443" ]]; then
-    # Explicit WebLogic port in the URL: try it FIRST (usually the muxed
-    # HTTP+T3+IIOP port). With --port-scan, also sweep the managed-server list so
-    # T3/IIOP are still found when they live on a DIFFERENT port than the URL's.
+    # Explicit WebLogic port in the URL: try it FIRST (usually the muxed port).
+    # With --port-scan, also sweep the managed-server list in case T3/IIOP live on
+    # a DIFFERENT port than the URL's.
     pset="$url_port"
     $PORT_SCAN && pset="$url_port,$T3_PORTS,$SCAN_PORTS"
-    sslset="$url_port${T3_SSL_PORTS:+,$T3_SSL_PORTS}"
   else
-    # Reverse-proxied web port (80/443): T3/IIOP are not here — probe --t3-ports,
-    # plus the --port-scan sweep list.
+    # Reverse-proxied web port (80/443): probe --t3-ports, plus the --port-scan list.
     pset="$T3_PORTS"
     $PORT_SCAN && pset="$T3_PORTS,$SCAN_PORTS"
   fi
+  # https front on 443: also try 443 itself over TLS (TCP-passthrough LB: T3s rides
+  # the HTTPS socket). Only meaningful over SSL, hence https-only.
+  [[ "$scheme" == "https" && "$port" == "443" ]] && pset="$pset,443"
 
-  # Dedup (preserve first-seen order) into plain_ports / ssl_ports. First match in
-  # the plaintext loop wins, so the URL's own port stays first.
-  local -a plain_ports ssl_ports _raw
-  local _pp _seen
+  # Dedup (preserve first-seen order; URL's own port stays first -> first match wins).
+  local -a cand_ports _raw; local _pp _seen
   IFS=',' read -ra _raw <<< "$pset"
-  plain_ports=(); _seen=" "
+  cand_ports=(); _seen=" "
   for _pp in "${_raw[@]}"; do
     _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
     [[ "$_seen" == *" $_pp "* ]] && continue
-    plain_ports+=("$_pp"); _seen="$_seen$_pp "
-  done
-  IFS=',' read -ra _raw <<< "$sslset"
-  ssl_ports=(); _seen=" "
-  for _pp in "${_raw[@]}"; do
-    _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
-    [[ "$_seen" == *" $_pp "* ]] && continue
-    ssl_ports+=("$_pp"); _seen="$_seen$_pp "
+    cand_ports+=("$_pp"); _seen="$_seen$_pp "
   done
 
   # GIOP 1.2 LocateRequest for object key "NameService"; an open IIOP listener
@@ -530,36 +518,35 @@ scan_surface() {
     return 0
   }
 
-  # 1) plaintext (templates can exploit these)
-  for p in "${plain_ports[@]}"; do
-    p="${p// /}"; [[ -z "$p" ]] && continue
-    probe_port "$p" "$nc_cmd"
-    [[ -n "$t3_hit" ]] && t3_open=1
-    [[ -n "$iiop_hit" ]] && iiop_open=1
-    if [[ -n "$t3_open$iiop_open" ]]; then wlport="$p"; break; fi
-  done
-
-  # 2) SSL — only if nothing plaintext found, ncat is available, and SSL ports
-  #    are configured (--t3-ssl-ports; empty by default). Detect-only.
-  if [[ -z "$t3_open$iiop_open" && -n "$ssl_cmd" && ${#ssl_ports[@]} -gt 0 ]]; then
-    for p in "${ssl_ports[@]}"; do
-      p="${p// /}"; [[ -z "$p" ]] && continue
-      probe_port "$p" "$ssl_cmd"
-      [[ -n "$t3_hit" ]] && t3_ssl=1
-      [[ -n "$iiop_hit" ]] && iiop_ssl=1
-      if [[ -n "$t3_ssl$iiop_ssl" ]]; then sslport="$p"; break; fi
-    done
+  # Wire chosen by the URL scheme: https -> T3/IIOP over SSL (ncat --ssl); http ->
+  # plaintext (nc). --port-scan uses the same wire. A plaintext hit (http) is
+  # exploitable by the Phase 2 templates; an SSL hit (https) is detect-only. First
+  # candidate port that answers T3/IIOP wins (break).
+  local probe_conn="" probe_ssl=""
+  if [[ "$scheme" == "https" ]]; then
+    if [[ -n "$ssl_cmd" ]]; then
+      probe_conn="$ssl_cmd"; probe_ssl=1
+    else
+      addr "T3/IIOP SSL probe skipped: https target needs ncat (not installed)"
+    fi
+  else
+    probe_conn="$nc_cmd"
   fi
 
-  # 3) T3/IIOP over TLS on the WEB port itself (443) — catches a TCP-passthrough
-  #    load balancer that forwards the WebLogic SSL channel on 443 (so T3s/iiops
-  #    ride the same socket as HTTPS). Only when nothing else was found and the
-  #    web port is 443. Detect-only (SSL), reported as T3-ssl/IIOP-ssl.
-  if [[ -z "$t3_open$iiop_open$t3_ssl$iiop_ssl" && -n "$ssl_cmd" && "$port" == "443" ]]; then
-    probe_port 443 "$ssl_cmd"
-    [[ -n "$t3_hit" ]]  && { t3_ssl=1; sslport=443; }
-    [[ -n "$iiop_hit" ]] && { iiop_ssl=1; sslport=443; }
-    [[ -n "$t3_ssl$iiop_ssl" ]] && addr "via TCP-passthrough LB on :443 (WebLogic SSL channel on the HTTPS port)"
+  if [[ -n "$probe_conn" ]]; then
+    for p in "${cand_ports[@]}"; do
+      p="${p// /}"; [[ -z "$p" ]] && continue
+      probe_port "$p" "$probe_conn"
+      if [[ -n "$probe_ssl" ]]; then
+        [[ -n "$t3_hit" ]] && t3_ssl=1
+        [[ -n "$iiop_hit" ]] && iiop_ssl=1
+        if [[ -n "$t3_ssl$iiop_ssl" ]]; then sslport="$p"; break; fi
+      else
+        [[ -n "$t3_hit" ]] && t3_open=1
+        [[ -n "$iiop_hit" ]] && iiop_open=1
+        if [[ -n "$t3_open$iiop_open" ]]; then wlport="$p"; break; fi
+      fi
+    done
   fi
 
   if [[ -n "$t3_open" ]];   then surfaces="${surfaces:+$surfaces,}T3";        addr "T3: HELO handshake on :$wlport"; fi
@@ -574,7 +561,7 @@ scan_surface() {
   # Human-readable evidence for column E (Phase 3 reads this alongside tokens).
   printf '%s' "$reason" > "$SURFACE_DIR/row${row}.reason"
   # Pin the plaintext WebLogic port for Phase 2 templates (falls back to first).
-  echo "${wlport:-${plain_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
+  echo "${wlport:-${cand_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
   # Base URL for Phase 2 console templates (web URL, or the admin port if found there).
   echo "$console_base" > "$SURFACE_DIR/row${row}.consoleurl"
   # WebLogic version parsed from the T3 HELO handshake (empty if not probed); Phase
