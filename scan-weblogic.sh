@@ -485,8 +485,8 @@ run_nuclei_for_target() {
     done
   fi
 
-  # HTTP app-surface templates: WebLogic HTTP RCE/SSRF endpoints reachable
-  # through the proxy (wls-wsat/_async/ws_utc/uddiexplorer) — the main avenue
+  # HTTP app-surface templates: WebLogic HTTP RCE endpoints reachable
+  # through the proxy (wls-wsat/_async/ws_utc) — the main avenue
   # when the console is hidden/blocked.
   if has_surface HTTP-app; then
     for t in "${HTTP_APP_TEMPLATES[@]}"; do
