@@ -17,6 +17,8 @@ set -euo pipefail
 #                      [--no-full-fallback] # disable the full nuclei-repo sweep
 #                                           # (runs when the curated set finds
 #                                           #  nothing / no surface; on by default)
+#                      [--full-severity critical,high]  # impact filter for the
+#                                           # full sweep (default high+critical)
 #
 # Requires: nuclei, python3, openpyxl, nc (netcat)
 ###############################################################################
@@ -81,6 +83,12 @@ ADMIN_PORT=9002
 # a thorough catch-all for non-WebLogic / uncurated exposure, but SLOW (thousands of
 # templates per target). On by default; disable with --no-full-fallback.
 FULL_FALLBACK=true
+# Impact filter for the full-sweep fallback: only findings of these severities are
+# kept (comma-separated nuclei -severity values). The sweep is both RESTRICTED to
+# these severities (fewer templates -> faster) AND its results are re-classified by
+# the reported info.severity after the run, so the fallback only ever surfaces
+# high-impact findings. Override with --full-severity info,low,medium,high,critical.
+FULL_SWEEP_SEVERITY="critical,high"
 # Python interpreter used for the Excel read/write phases; must have openpyxl.
 # Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
 PYTHON="${PYTHON:-python3}"
@@ -103,6 +111,7 @@ while [[ $# -gt 0 ]]; do
     --admin-port) ADMIN_PORT="$2"; shift 2 ;;
     --no-admin-port) SCAN_ADMIN_PORT=false; shift ;;
     --no-full-fallback) FULL_FALLBACK=false; shift ;;
+    --full-severity) FULL_SWEEP_SEVERITY="$2"; shift 2 ;;
     --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -571,10 +580,11 @@ run_nuclei_retry() {
   printf '%s' "$out"
 }
 
-# Full-repo fallback: scan $1 with the upstream templates, keeping only HIGH and
-# CRITICAL severity ("-severity critical,high" — also trims the set from thousands
-# of templates to the high-impact ones, so the sweep is far faster). Appends
-# findings to $result_file (caller's scope). Single pass — the sweep is already
+# Full-repo fallback: scan $1 with the upstream templates, keeping only the
+# $FULL_SWEEP_SEVERITY findings (default HIGH + CRITICAL). Restricts the run via
+# nuclei -severity (far fewer templates -> faster) AND re-classifies the result by
+# the reported info.severity after the run. Appends findings to $result_file
+# (caller's scope). Single pass — the sweep is already
 # exhaustive, so the per-batch OAST retry is not applied. Routed through the HTTP
 # proxy like the other HTTP runs.
 #   $2 = exclude mode:
@@ -603,11 +613,26 @@ run_full_sweep() {
   [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
   out=$(nuclei -u "$target" -t "$UPSTREAM_TPL" \
     "${excl[@]+"${excl[@]}"}" \
-    -severity critical,high \
+    -severity "$FULL_SWEEP_SEVERITY" \
     "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
     -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
     -no-color -jsonl -silent </dev/null 2>/dev/null || true)
-  [[ -n "$out" ]] && printf '%s\n' "$out" >> "$result_file"
+  [[ -z "$out" ]] && return
+  # Impact classification: re-filter the sweep result by the finding's reported
+  # info.severity, keeping only $FULL_SWEEP_SEVERITY. -severity above already
+  # restricts which templates run; this is the explicit post-result classification
+  # (and a safety net if a matched finding reports a lower severity than its file).
+  local sev_re kept
+  sev_re=$(printf '%s' "$FULL_SWEEP_SEVERITY" | tr ',' '|' | tr -d ' ')
+  kept=$(printf '%s\n' "$out" | grep -Ei "\"severity\"[[:space:]]*:[[:space:]]*\"(${sev_re})\"" || true)
+  if [[ -n "$kept" ]]; then
+    local n_all n_kept
+    n_all=$(printf '%s\n' "$out" | grep -c . || true)
+    n_kept=$(printf '%s\n' "$kept" | grep -c . || true)
+    [[ "$n_kept" -lt "$n_all" ]] && \
+      echo "    [row ${row:-?}] impact filter: kept $n_kept/$n_all finding(s) ($FULL_SWEEP_SEVERITY)" >&2
+    printf '%s\n' "$kept" >> "$result_file"
+  fi
 }
 
 run_nuclei_for_target() {
