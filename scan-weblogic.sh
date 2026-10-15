@@ -61,10 +61,11 @@ T3_PORTS="7001"
 # probing 7002 mostly just times out. Enable with --t3-ssl-ports 7002 when a
 # host is suspected to expose T3 over SSL.
 T3_SSL_PORTS=""
-# Optional T3/IIOP port sweep (--port-scan): when a URL has no explicit WebLogic
-# port, also probe this candidate list (managed-server ports) instead of only
-# --t3-ports. Off by default; it is far noisier/slower (a dead host pays
-# ~len(ports)*2*PROBE_TIMEOUT), so enable it on specific suspected hosts.
+# Optional T3/IIOP port sweep (--port-scan): also probe this candidate list of
+# managed-server ports for T3/IIOP, on top of --t3-ports (reverse-proxied web URL)
+# or the URL's own port (explicit-port URL). Catches the case where T3/IIOP live on
+# a DIFFERENT port than the HTTP one. Off by default; far noisier/slower (a dead
+# host pays ~len(ports)*2*PROBE_TIMEOUT), so enable it on specific suspected hosts.
 PORT_SCAN=false
 SCAN_PORTS="7001,7002,8001,8002,9001,9002,7003,8080,8443"
 # WebLogic Administration Port: when the domain flag "Enable Administration Port"
@@ -456,24 +457,43 @@ scan_surface() {
     fi
   fi
 
+  # Build the T3/IIOP candidate port set. HTTP always stays on the URL's own port
+  # (probed separately above); this only decides where to look for T3/IIOP.
   local url_port=""
   [[ "$url" =~ ^https?://[^/]+:([0-9]+) ]] && url_port="${BASH_REMATCH[1]}"
-  local -a plain_ports ssl_ports
+  local pset sslset="$T3_SSL_PORTS"
   if [[ -n "$url_port" && "$url_port" != "80" && "$url_port" != "443" ]]; then
-    plain_ports=("$url_port"); ssl_ports=("$url_port")  # explicit port: try both
+    # Explicit WebLogic port in the URL: try it FIRST (usually the muxed
+    # HTTP+T3+IIOP port). With --port-scan, also sweep the managed-server list so
+    # T3/IIOP are still found when they live on a DIFFERENT port than the URL's.
+    pset="$url_port"
+    $PORT_SCAN && pset="$url_port,$T3_PORTS,$SCAN_PORTS"
+    sslset="$url_port${T3_SSL_PORTS:+,$T3_SSL_PORTS}"
   else
-    # reverse-proxied web port: probe --t3-ports, plus the --port-scan sweep list
-    local pset="$T3_PORTS"
+    # Reverse-proxied web port (80/443): T3/IIOP are not here — probe --t3-ports,
+    # plus the --port-scan sweep list.
+    pset="$T3_PORTS"
     $PORT_SCAN && pset="$T3_PORTS,$SCAN_PORTS"
-    local -a _raw; IFS=',' read -ra _raw <<< "$pset"
-    plain_ports=(); local _seen=" " _pp
-    for _pp in "${_raw[@]}"; do
-      _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
-      [[ "$_seen" == *" $_pp "* ]] && continue
-      plain_ports+=("$_pp"); _seen="$_seen$_pp "
-    done
-    IFS=',' read -ra ssl_ports <<< "$T3_SSL_PORTS"
   fi
+
+  # Dedup (preserve first-seen order) into plain_ports / ssl_ports. First match in
+  # the plaintext loop wins, so the URL's own port stays first.
+  local -a plain_ports ssl_ports _raw
+  local _pp _seen
+  IFS=',' read -ra _raw <<< "$pset"
+  plain_ports=(); _seen=" "
+  for _pp in "${_raw[@]}"; do
+    _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
+    [[ "$_seen" == *" $_pp "* ]] && continue
+    plain_ports+=("$_pp"); _seen="$_seen$_pp "
+  done
+  IFS=',' read -ra _raw <<< "$sslset"
+  ssl_ports=(); _seen=" "
+  for _pp in "${_raw[@]}"; do
+    _pp="${_pp// /}"; [[ -z "$_pp" ]] && continue
+    [[ "$_seen" == *" $_pp "* ]] && continue
+    ssl_ports+=("$_pp"); _seen="$_seen$_pp "
+  done
 
   # GIOP 1.2 LocateRequest for object key "NameService"; an open IIOP listener
   # replies with a GIOP LocateReply. A bare header elicits no reply (server
