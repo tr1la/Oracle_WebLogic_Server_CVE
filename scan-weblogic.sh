@@ -14,6 +14,9 @@ set -euo pipefail
 #                      [--attempts 3]       # retry a batch that returns no results
 #                      [--admin-port 9002]  # WebLogic admin-port console (SSL); on
 #                      [--no-admin-port]    # by default — disable with this flag
+#                      [--no-full-fallback] # disable the full nuclei-repo sweep
+#                                           # (runs when the curated set finds
+#                                           #  nothing / no surface; on by default)
 #
 # Requires: nuclei, python3, openpyxl, nc (netcat)
 ###############################################################################
@@ -71,6 +74,13 @@ SCAN_PORTS="7001,7002,8001,8002,9001,9002,7003,8080,8443"
 # disable with --no-admin-port).
 SCAN_ADMIN_PORT=true
 ADMIN_PORT=9002
+# Fallback full-template sweep. When the curated WebLogic template set yields NO
+# findings for a target — or the target has NO detected attack surface at all (even
+# after the optional port sweep) — scan it with the ENTIRE nuclei-templates repo
+# ($UPSTREAM_TPL), excluding the upstream templates the script already ran. This is
+# a thorough catch-all for non-WebLogic / uncurated exposure, but SLOW (thousands of
+# templates per target). On by default; disable with --no-full-fallback.
+FULL_FALLBACK=true
 # Python interpreter used for the Excel read/write phases; must have openpyxl.
 # Override if `python3` on PATH lacks it, e.g. PYTHON=/path/to/python3 ./scan...
 PYTHON="${PYTHON:-python3}"
@@ -92,6 +102,7 @@ while [[ $# -gt 0 ]]; do
     --scan-ports) SCAN_PORTS="$2"; shift 2 ;;
     --admin-port) ADMIN_PORT="$2"; shift 2 ;;
     --no-admin-port) SCAN_ADMIN_PORT=false; shift ;;
+    --no-full-fallback) FULL_FALLBACK=false; shift ;;
     --excel)     EXCEL="$2"; shift 2 ;;
     *)           echo "Unknown option: $1"; exit 1 ;;
   esac
@@ -187,6 +198,15 @@ IIOP_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2024-21006-active-oast.yaml"
   "$CUSTOM_TPL/CVE-2024-21182-active-oast.yaml"
 )
+
+# Upstream templates the script already runs — excluded (-et) from the full-repo
+# fallback sweep so they are not re-scanned. Only the $UPSTREAM_TPL entries matter:
+# the custom $CUSTOM_TPL templates live outside the sweep's -t dir, so the sweep
+# never includes them in the first place.
+FULL_EXCLUDE=()
+for _t in "${HTTP_TEMPLATES[@]}" "${HTTP_APP_TEMPLATES[@]}"; do
+  [[ "$_t" == "$UPSTREAM_TPL"/* ]] && FULL_EXCLUDE+=("-et" "$_t")
+done
 
 # ─── Phase 0: extract targets from Excel ─────────────────────────────────────
 TARGETS_FILE="$WORK_DIR/targets.txt"
@@ -551,6 +571,27 @@ run_nuclei_retry() {
   printf '%s' "$out"
 }
 
+# Full-repo fallback: scan $1 with every upstream template, minus the ones the
+# script already ran ($FULL_EXCLUDE). Appends findings to $result_file (caller's
+# scope). Single pass — the sweep is already exhaustive, so the per-batch OAST
+# retry is not applied here. Routed through the HTTP proxy like the other HTTP runs.
+run_full_sweep() {
+  local target="$1" out=""
+  if [[ ! -d "$UPSTREAM_TPL" ]]; then
+    echo "    [row ${row:-?}] full-fallback: template dir $UPSTREAM_TPL not found, skipping" >&2
+    return
+  fi
+  echo "    [row ${row:-?}] full nuclei sweep against $target (entire repo minus curated set; slow)..." >&2
+  local nuclei_proxy=()
+  [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
+  out=$(nuclei -u "$target" -t "$UPSTREAM_TPL" \
+    "${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}" \
+    "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
+    -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
+    -no-color -jsonl -silent </dev/null 2>/dev/null || true)
+  [[ -n "$out" ]] && printf '%s\n' "$out" >> "$result_file"
+}
+
 run_nuclei_for_target() {
   local row="$1" url="$2"
   local surface_file="$SURFACE_DIR/row${row}.txt"
@@ -566,8 +607,20 @@ run_nuclei_for_target() {
   local result_file="$RESULTS_DIR/row${row}.json"
 
   if [[ "$surfaces" == "NONE" ]]; then
-    echo "  [row $row] no attack surface detected, skipping"
     : > "$result_file"
+    # No WebLogic surface (even after the optional port sweep). Fall back to a full
+    # nuclei sweep so the target still gets general coverage — the curated set has
+    # no surface for it, so nothing from the script is excluded beyond $FULL_EXCLUDE.
+    if $DRY_RUN; then
+      echo "  [row $row] no attack surface -> would run full nuclei fallback sweep against $url"
+    elif $FULL_FALLBACK; then
+      echo "  [row $row] no attack surface -> full nuclei fallback sweep"
+      run_full_sweep "$url"
+      local nhits=0; [[ -s "$result_file" ]] && nhits=$(wc -l < "$result_file" | tr -d ' ')
+      echo "  [row $row] -> $nhits finding(s) (full fallback)"
+    else
+      echo "  [row $row] no attack surface detected, skipping (full fallback off)"
+    fi
     return
   fi
 
@@ -667,7 +720,17 @@ run_nuclei_for_target() {
 
   local hits=0
   [[ -s "$result_file" ]] && hits=$(wc -l < "$result_file" | tr -d ' ')
-  echo "  [row $row] -> $hits finding(s)"
+
+  # Fallback: the curated template set found nothing on a target that DID expose a
+  # surface — sweep the whole upstream repo (minus the curated upstream set) so the
+  # target isn't written off just because no WebLogic CVE matched.
+  if [[ "$hits" -eq 0 ]] && $FULL_FALLBACK; then
+    run_full_sweep "$url"
+    hits=0; [[ -s "$result_file" ]] && hits=$(wc -l < "$result_file" | tr -d ' ')
+    echo "  [row $row] -> $hits finding(s) (after full fallback)"
+  else
+    echo "  [row $row] -> $hits finding(s)"
+  fi
 }
 
 while IFS=$'\t' read -r row url <&3; do
