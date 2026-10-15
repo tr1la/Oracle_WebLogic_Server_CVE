@@ -506,16 +506,24 @@ scan_surface() {
   # magic. Grepping anywhere gave false positives because an HTTP server echoes
   # our "GIOP"/handshake bytes back inside its 400 error page (and the SSL probe
   # to an HTTPS :443 would do the same), flagging phantom IIOP.
-  local wlport="" sslport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" p t3_hit iiop_hit
+  local wlport="" sslport="" t3_open="" iiop_open="" t3_ssl="" iiop_ssl="" wl_version="" p t3_hit iiop_hit
   probe_port() {   # $1=port  $2=connector cmd
     local pp="$1" conn="$2" r
     t3_hit=""; iiop_hit=""
-    # `|| true`: head closes the pipe after 4 bytes, so the connector gets
-    # SIGPIPE and exits non-zero; with pipefail+set -e that would abort the
-    # whole scan. The 4-byte prefix is all we need to identify the protocol.
+    # `|| true`: head closes the pipe (SIGPIPE to the connector) once it has what
+    # it needs; with pipefail+set -e that non-zero exit would otherwise abort the
+    # scan. T3: read the FIRST LINE — a WebLogic handshake answers
+    # "HELO:<version>.<bool>", so `head -n 1` returns the moment that newline
+    # arrives; match the HELO prefix AND capture the dotted version (Excel column).
     r=$(echo -ne "t3 12.2.1\nAS:255\nHL:19\nMS:10000000\nPU:t3://x:${pp}\n\n" | \
-      $TO $conn "$host" "$pp" 2>/dev/null | head -c 4) || true
-    [[ "$r" == "HELO" ]] && t3_hit=1
+      $TO $conn "$host" "$pp" 2>/dev/null | head -n 1) || true
+    if [[ "$r" == HELO* ]]; then
+      t3_hit=1
+      local _v; _v=$(printf '%s' "$r" | sed -nE 's/^HELO:([0-9]+(\.[0-9]+)*).*/\1/p')
+      [[ -n "$_v" && -z "$wl_version" ]] && wl_version="$_v"
+    fi
+    # IIOP: a GIOP LocateReply starts with the "GIOP" magic (binary, no early
+    # newline) — match the first 4 bytes.
     r=$(printf "$giop_probe" | \
       $TO $conn "$host" "$pp" 2>/dev/null | head -c 4) || true
     [[ "$r" == "GIOP" ]] && iiop_hit=1
@@ -569,9 +577,12 @@ scan_surface() {
   echo "${wlport:-${plain_ports[0]}}" > "$SURFACE_DIR/row${row}.wlport"
   # Base URL for Phase 2 console templates (web URL, or the admin port if found there).
   echo "$console_base" > "$SURFACE_DIR/row${row}.consoleurl"
+  # WebLogic version parsed from the T3 HELO handshake (empty if not probed); Phase
+  # 3 writes it into the Excel "Version" column when non-empty.
+  printf '%s' "$wl_version" > "$SURFACE_DIR/row${row}.version"
   local admin_note=""
   [[ "$console_base" != "$url" ]] && admin_note=" console@${console_base}"
-  echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces${admin_note}"
+  echo "  [row $row] $host (http:$port wl:${wlport:-none}) -> $surfaces${admin_note}${wl_version:+ ver:$wl_version}"
 }
 
 while IFS=$'\t' read -r row url <&3; do
@@ -842,6 +853,14 @@ for col, title in [(surface_col, "Attack Surface"),
     cell.font = header_font
     cell.fill = header_fill
 
+# Locate the "Version" column (for writing the T3-probed WebLogic version). It sits
+# left of "Note", so the insert above did not shift it; re-scan anyway to be safe.
+version_col = None
+for c in range(1, ws.max_column + 1):
+    if str(ws.cell(1, c).value or "").strip().lower() == "version":
+        version_col = c
+        break
+
 for row in range(row_start, row_end + 1):
     sf = os.path.join(work_dir, "surfaces", f"row{row}.txt")
     surfaces = ""
@@ -855,6 +874,16 @@ for row in range(row_start, row_end + 1):
     cell_e = surfaces + ("\n" + reason if reason else "")
     c = ws.cell(row, surface_col, cell_e)
     c.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical="top")
+
+    # Update the "Version" column with the WebLogic version parsed from the T3
+    # HELO handshake, only when it was actually probed (non-empty). Overwrites,
+    # since the live handshake is authoritative; untouched if not probed.
+    if version_col:
+        vf = os.path.join(work_dir, "surfaces", f"row{row}.version")
+        if os.path.isfile(vf):
+            ver = open(vf).read().strip()
+            if ver:
+                ws.cell(row, version_col, ver)
 
     rf = os.path.join(work_dir, "results", f"row{row}.json")
     cves = []
