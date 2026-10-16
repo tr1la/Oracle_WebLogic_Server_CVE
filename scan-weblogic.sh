@@ -183,7 +183,6 @@ HTTP_TEMPLATES=(
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-14883.yaml"
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-14750.yaml"
   "$UPSTREAM_TPL/http/cves/2022/CVE-2022-21371.yaml"
-  "$UPSTREAM_TPL/http/cves/2021/CVE-2021-2135.yaml"
 )
 
 T3_TEMPLATES=(
@@ -193,6 +192,10 @@ T3_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2021-2211-active-oast.yaml"
   "$CUSTOM_TPL/CVE-2021-2394-active-oast.yaml"
   "$CUSTOM_TPL/CVE-2024-20931-active-oast.yaml"
+  # Upstream PD template; despite its http/ path it is a javascript: T3 deser
+  # exploit (net.Open + T3 handshake), so it belongs with the raw T3 batch
+  # (host:wlport, gated on a T3 surface) — NOT the HTTP console set.
+  "$UPSTREAM_TPL/http/cves/2021/CVE-2021-2135.yaml"
 )
 
 # HTTP app-surface — WebLogic HTTP RCE endpoints that a reverse proxy still
@@ -295,7 +298,7 @@ scan_surface() {
   #   3xx with Location pointing at console/login -> HTTP (redirect to login)
   #   401/403                                     -> HTTP-restricted
   #       console app is deployed but access-blocked (connection filter / WAF).
-  #       The preauth CVEs (14882/14883/14750/21371/2135) are auth-bypass +
+  #       The preauth CVEs (14882/14883/14750/21371) are auth-bypass +
   #       path-traversal against internal handlers on a DIFFERENT path than
   #       /console/login, so they may still fire -> keep the HTTP surface so
   #       those templates run; nuclei's OAST confirms if the bypass works.
