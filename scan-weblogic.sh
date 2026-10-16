@@ -11,6 +11,7 @@ set -euo pipefail
 # Usage:
 #   chmod +x scan-weblogic.sh
 #   ./scan-weblogic.sh [--dry-run] [--rows 2-79] [--timeout 30] [--rate 5]
+#                      [--jobs 8]           # scan N targets concurrently (1=serial)
 #                      [--attempts 3]       # retry a batch that returns no results
 #                      [--admin-port 9002]  # WebLogic admin-port console (SSL); on
 #                      [--no-admin-port]    # by default — disable with this flag
@@ -44,6 +45,11 @@ RATE_LIMIT=5
 # retried when a batch yields ZERO findings (a batch with >=1 hit is not re-run).
 # Override with --attempts N (1 disables retrying).
 NUCLEI_ATTEMPTS=3
+# Parallelism: how many targets to scan concurrently in Phase 1 (surface detection)
+# and Phase 2 (nuclei). Each target writes its own row{N}.* files, so targets are
+# independent. 1 = sequential. Raise for throughput; lower if nuclei — especially
+# the full-repo fallback sweep — saturates CPU/RAM/network. Override with --jobs N.
+JOBS=8
 DRY_RUN=false
 PROXY=""
 SOCKS=""
@@ -103,6 +109,7 @@ while [[ $# -gt 0 ]]; do
     --t3-ports)  T3_PORTS="$2"; shift 2 ;;
     --probe-timeout) PROBE_TIMEOUT="$2"; shift 2 ;;
     --attempts)  NUCLEI_ATTEMPTS="$2"; shift 2 ;;
+    --jobs)      JOBS="$2"; shift 2 ;;
     --port-scan) PORT_SCAN=true; shift ;;
     --scan-ports) SCAN_PORTS="$2"; shift 2 ;;
     --admin-port) ADMIN_PORT="$2"; shift 2 ;;
@@ -127,6 +134,13 @@ elif command -v gtimeout &>/dev/null; then TO="gtimeout $PROBE_TIMEOUT"
 else TO=""; fi
 
 mkdir -p "$WORK_DIR"
+
+# Concurrency gate for the per-target loops: block until fewer than $JOBS background
+# jobs are running. Portable to bash 3.2 (`jobs -rp` is visible inside the command
+# substitution here). Rolling semaphore — a new target launches as soon as a slot
+# frees; JOBS=1 makes the loops sequential. The per-target functions spawn no
+# background jobs of their own, so this count reflects only in-flight targets.
+sem_wait() { while [[ $(jobs -rp | wc -l) -ge ${JOBS:-1} ]]; do sleep 0.2; done; }
 
 if [[ -n "$SOCKS" ]]; then
   echo "[*] SOCKS5: $SOCKS (T3/IIOP raw TCP routed through SOCKS)"
@@ -573,8 +587,10 @@ scan_surface() {
 }
 
 while IFS=$'\t' read -r row url <&3; do
-  scan_surface "$row" "$url"
+  sem_wait
+  scan_surface "$row" "$url" &
 done 3< "$TARGETS_FILE"
+wait 2>/dev/null || true
 
 # ─── Phase 2: nuclei CVE scan per surface ────────────────────────────────────
 echo ""
@@ -786,8 +802,10 @@ run_nuclei_for_target() {
 }
 
 while IFS=$'\t' read -r row url <&3; do
-  run_nuclei_for_target "$row" "$url"
+  sem_wait
+  run_nuclei_for_target "$row" "$url" &
 done 3< "$TARGETS_FILE"
+wait 2>/dev/null || true
 
 # ─── Phase 3: write results back to Excel ─────────────────────────────────────
 echo ""
