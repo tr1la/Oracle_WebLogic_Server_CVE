@@ -122,7 +122,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$PROXY" ]]; then
-  echo "[*] Proxy: $PROXY (all HTTP + nuclei traffic routed through proxy)"
+  echo "[*] Proxy: $PROXY (HTTP probes + HTTP nuclei templates only; T3/IIOP go via --socks or direct)"
 fi
 
 # `timeout` hard-bounds each raw probe at PROBE_TIMEOUT (nc/ncat -w is ignored
