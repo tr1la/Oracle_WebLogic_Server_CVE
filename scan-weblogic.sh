@@ -84,7 +84,7 @@ ADMIN_PORT=9002
 # target — or the target has NO detected attack surface at all (even after the
 # optional port sweep) — run the upstream nuclei WebLogic high/critical CVE
 # templates that the curated set does not already cover (WLS_SWEEP_HTTP /
-# WLS_SWEEP_RAW below). Focused on WebLogic, so fast (~7 templates). On by default;
+# WLS_SWEEP_RAW below). Focused on WebLogic, so fast (~8 templates). On by default;
 # disable with --no-full-fallback.
 FULL_FALLBACK=true
 # Impact filter for the full-sweep fallback: only findings of these severities are
@@ -182,7 +182,6 @@ HTTP_TEMPLATES=(
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-14882.yaml"
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-14883.yaml"
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-14750.yaml"
-  "$UPSTREAM_TPL/http/cves/2022/CVE-2022-21371.yaml"
 )
 
 T3_TEMPLATES=(
@@ -225,11 +224,12 @@ IIOP_TEMPLATES=(
 # Fallback sweep set: the upstream nuclei WebLogic high/critical CVE templates the
 # curated lists above do NOT already run. Split by transport so each is sent to the
 # right target (HTTP -> web URL; network/T3 -> host:wlport). Keeps the fallback
-# WebLogic-focused and fast (~7 templates) instead of sweeping the whole repo.
+# WebLogic-focused and fast (~8 templates) instead of sweeping the whole repo.
 WLS_SWEEP_HTTP=(
   "$UPSTREAM_TPL/http/cves/2017/CVE-2017-3506.yaml"                       # WLS wsat/XMLDecoder RCE
   "$UPSTREAM_TPL/http/cves/2019/CVE-2019-2729.yaml"                       # async deser RCE (2725 bypass)
   "$UPSTREAM_TPL/http/cves/2020/CVE-2020-2733.yaml"                       # JSF/ADF RCE
+  "$UPSTREAM_TPL/http/cves/2022/CVE-2022-21371.yaml"                      # Web Container LFI (surface-independent)
   "$UPSTREAM_TPL/http/default-logins/weblogic/weblogic-weak-login.yaml"   # default/weak console creds
 )
 WLS_SWEEP_RAW=(
@@ -298,7 +298,7 @@ scan_surface() {
   #   3xx with Location pointing at console/login -> HTTP (redirect to login)
   #   401/403                                     -> HTTP-restricted
   #       console app is deployed but access-blocked (connection filter / WAF).
-  #       The preauth CVEs (14882/14883/14750/21371) are auth-bypass +
+  #       The preauth CVEs (14882/14883/14750) are auth-bypass +
   #       path-traversal against internal handlers on a DIFFERENT path than
   #       /console/login, so they may still fire -> keep the HTTP surface so
   #       those templates run; nuclei's OAST confirms if the bypass works.
