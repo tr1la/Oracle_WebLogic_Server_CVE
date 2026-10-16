@@ -15,9 +15,9 @@ set -euo pipefail
 #                      [--attempts 3]       # retry a batch that returns no results
 #                      [--admin-port 9002]  # WebLogic admin-port console (SSL); on
 #                      [--no-admin-port]    # by default — disable with this flag
-#                      [--no-full-fallback] # disable the full nuclei-repo sweep
-#                                           # (runs when the curated set finds
-#                                           #  nothing / no surface; on by default)
+#                      [--no-full-fallback] # disable the WebLogic high/critical
+#                                           # fallback sweep (runs when the curated
+#                                           #  set finds nothing / no surface; on)
 #                      [--full-severity critical,high]  # impact filter for the
 #                                           # full sweep (default high+critical)
 #
@@ -80,12 +80,12 @@ SCAN_PORTS="7001,7002,8001,8002,9001,9002,7003,8080,8443"
 # disable with --no-admin-port).
 SCAN_ADMIN_PORT=true
 ADMIN_PORT=9002
-# Fallback full-template sweep. When the curated WebLogic template set yields NO
-# findings for a target — or the target has NO detected attack surface at all (even
-# after the optional port sweep) — scan it with the ENTIRE nuclei-templates repo
-# ($UPSTREAM_TPL), excluding the upstream templates the script already ran. This is
-# a thorough catch-all for non-WebLogic / uncurated exposure, but SLOW (thousands of
-# templates per target). On by default; disable with --no-full-fallback.
+# Fallback WebLogic sweep. When the curated template set yields NO findings for a
+# target — or the target has NO detected attack surface at all (even after the
+# optional port sweep) — run the upstream nuclei WebLogic high/critical CVE
+# templates that the curated set does not already cover (WLS_SWEEP_HTTP /
+# WLS_SWEEP_RAW below). Focused on WebLogic, so fast (~8 templates). On by default;
+# disable with --no-full-fallback.
 FULL_FALLBACK=true
 # Impact filter for the full-sweep fallback: only findings of these severities are
 # kept (comma-separated nuclei -severity values). The sweep is both RESTRICTED to
@@ -219,14 +219,22 @@ IIOP_TEMPLATES=(
   "$CUSTOM_TPL/CVE-2024-21182-active-oast.yaml"
 )
 
-# Upstream templates the script already runs — excluded (-et) from the full-repo
-# fallback sweep so they are not re-scanned. Only the $UPSTREAM_TPL entries matter:
-# the custom $CUSTOM_TPL templates live outside the sweep's -t dir, so the sweep
-# never includes them in the first place.
-FULL_EXCLUDE=()
-for _t in "${HTTP_TEMPLATES[@]}" "${HTTP_APP_TEMPLATES[@]}"; do
-  [[ "$_t" == "$UPSTREAM_TPL"/* ]] && FULL_EXCLUDE+=("-et" "$_t")
-done
+# Fallback sweep set: the upstream nuclei WebLogic high/critical CVE templates the
+# curated lists above do NOT already run. Split by transport so each is sent to the
+# right target (HTTP -> web URL; network/T3 -> host:wlport). Keeps the fallback
+# WebLogic-focused and fast (~8 templates) instead of sweeping the whole repo.
+WLS_SWEEP_HTTP=(
+  "$UPSTREAM_TPL/http/cves/2017/CVE-2017-3506.yaml"                       # WLS wsat/XMLDecoder RCE
+  "$UPSTREAM_TPL/http/cves/2019/CVE-2019-2729.yaml"                       # async deser RCE (2725 bypass)
+  "$UPSTREAM_TPL/http/cves/2020/CVE-2020-2733.yaml"                       # JSF/ADF RCE
+  "$UPSTREAM_TPL/http/cves/2020/CVE-2020-2551.yaml"                       # upstream http variant of 2551
+  "$UPSTREAM_TPL/http/default-logins/weblogic/weblogic-weak-login.yaml"   # default/weak console creds
+)
+WLS_SWEEP_RAW=(
+  "$UPSTREAM_TPL/network/cves/2016/CVE-2016-3510.yaml"                    # T3 deser RCE
+  "$UPSTREAM_TPL/network/cves/2018/CVE-2018-2628.yaml"                    # T3 deser RCE
+  "$UPSTREAM_TPL/network/cves/2018/CVE-2018-2893.yaml"                    # T3 deser RCE
+)
 
 # ─── Phase 0: extract targets from Excel ─────────────────────────────────────
 TARGETS_FILE="$WORK_DIR/targets.txt"
@@ -614,39 +622,49 @@ run_nuclei_retry() {
   printf '%s' "$out"
 }
 
-# Full-repo fallback: scan $1 with the upstream templates, keeping only the
-# $FULL_SWEEP_SEVERITY findings (default HIGH + CRITICAL). Restricts the run via
-# nuclei -severity (far fewer templates -> faster) AND re-classifies the result by
-# the reported info.severity after the run. Appends findings to $result_file
-# (caller's scope). Single pass — the sweep is already
-# exhaustive, so the per-batch OAST retry is not applied. Routed through the HTTP
-# proxy like the other HTTP runs.
-#
-# Always excludes the upstream templates the script already ran ($FULL_EXCLUDE):
-# when a surface was found they already ran (no point re-running); and a
-# NONE-surface target has no surface for them anyway (the curated set targets
-# specific surfaces — console / wls-wsat / T3 — all of which Phase 1 already probed,
-# 14882 traversal included), so re-running the known WebLogic templates adds nothing.
+# WebLogic high/critical fallback sweep: run the upstream WebLogic CVE templates the
+# curated set does not already cover. HTTP templates -> the web URL ($1, via the
+# Burp --proxy like the other HTTP runs); network/T3 templates -> host:wlport (via
+# proxychains --socks like the other T3/IIOP runs, else direct). Only
+# $FULL_SWEEP_SEVERITY findings are kept: the templates are already high/critical,
+# and the result is re-classified by reported info.severity after the run (explicit
+# impact filter). Appends to $result_file (caller scope). Single pass (no OAST retry).
+# Reads $host_only / $wlport from the caller (run_nuclei_for_target) by dynamic scope.
 run_full_sweep() {
-  local target="$1" out=""
-  if [[ ! -d "$UPSTREAM_TPL" ]]; then
-    echo "    [row ${row:-?}] full-fallback: template dir $UPSTREAM_TPL not found, skipping" >&2
+  local target="$1" out="" r t
+  local http_t=() raw_t=()
+  for t in "${WLS_SWEEP_HTTP[@]}"; do [[ -f "$t" ]] && http_t+=("-t" "$t"); done
+  for t in "${WLS_SWEEP_RAW[@]}";  do [[ -f "$t" ]] && raw_t+=("-t" "$t"); done
+  if [[ ${#http_t[@]} -eq 0 && ${#raw_t[@]} -eq 0 ]]; then
+    echo "    [row ${row:-?}] WebLogic fallback sweep: no upstream templates found under $UPSTREAM_TPL" >&2
     return
   fi
-  echo "    [row ${row:-?}] full nuclei sweep (high+critical, minus curated set) against $target; slow..." >&2
+  echo "    [row ${row:-?}] WebLogic high/critical fallback sweep ($(( ${#http_t[@]}/2 )) http + $(( ${#raw_t[@]}/2 )) t3)..." >&2
   local nuclei_proxy=()
   [[ -n "$PROXY" ]] && nuclei_proxy=(-proxy "$PROXY")
-  out=$(nuclei -u "$target" -t "$UPSTREAM_TPL" \
-    "${FULL_EXCLUDE[@]+"${FULL_EXCLUDE[@]}"}" \
-    -severity "$FULL_SWEEP_SEVERITY" \
-    "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
-    -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
-    -no-color -jsonl -silent </dev/null 2>/dev/null || true)
-  [[ -z "$out" ]] && return
-  # Impact classification: re-filter the sweep result by the finding's reported
-  # info.severity, keeping only $FULL_SWEEP_SEVERITY. -severity above already
-  # restricts which templates run; this is the explicit post-result classification
-  # (and a safety net if a matched finding reports a lower severity than its file).
+  # HTTP WebLogic templates -> web URL (Burp proxy)
+  if [[ ${#http_t[@]} -gt 0 ]]; then
+    r=$(nuclei -u "$target" "${http_t[@]}" \
+      "${nuclei_proxy[@]+"${nuclei_proxy[@]}"}" \
+      -severity "$FULL_SWEEP_SEVERITY" \
+      -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
+      -no-color -jsonl -silent </dev/null 2>/dev/null || true)
+    out="${out}${out:+$'\n'}${r}"
+  fi
+  # network/T3 WebLogic templates -> host:wlport (proxychains --socks, like raw batch)
+  if [[ ${#raw_t[@]} -gt 0 ]]; then
+    local nuclei_wrap=""
+    if [[ -n "$SOCKS" && -f "${PROXYCHAINS_CONF:-/dev/null}" ]] && command -v proxychains4 &>/dev/null; then
+      nuclei_wrap="proxychains4 -q -f $PROXYCHAINS_CONF"
+    fi
+    r=$($nuclei_wrap nuclei -u "${host_only}:${wlport}" "${raw_t[@]}" \
+      -severity "$FULL_SWEEP_SEVERITY" \
+      -timeout "$TIMEOUT" -rate-limit "$RATE_LIMIT" \
+      -no-color -jsonl -silent </dev/null 2>/dev/null || true)
+    out="${out}${out:+$'\n'}${r}"
+  fi
+  [[ -z "${out//[$'\n ']/}" ]] && return
+  # Impact classification: keep only $FULL_SWEEP_SEVERITY by reported info.severity.
   local sev_re kept
   sev_re=$(printf '%s' "$FULL_SWEEP_SEVERITY" | tr ',' '|' | tr -d ' ')
   kept=$(printf '%s\n' "$out" | grep -Ei "\"severity\"[[:space:]]*:[[:space:]]*\"(${sev_re})\"" || true)
@@ -676,13 +694,14 @@ run_nuclei_for_target() {
 
   if [[ "$surfaces" == "NONE" ]]; then
     : > "$result_file"
-    # No WebLogic surface (even after the optional port sweep). Fall back to a full
-    # nuclei sweep so the target still gets general coverage — the curated set has
-    # no surface for it, so nothing from the script is excluded beyond $FULL_EXCLUDE.
+    # No WebLogic surface (even after the optional port sweep). Fall back to the
+    # upstream WebLogic high/critical templates anyway — a surface probe can
+    # false-negative (WAF-hidden console, filtered/odd T3 port), and these templates
+    # confirm via their own requests/OAST.
     if $DRY_RUN; then
-      echo "  [row $row] no attack surface -> would run full nuclei fallback sweep against $url"
+      echo "  [row $row] no attack surface -> would run WebLogic high/critical fallback sweep"
     elif $FULL_FALLBACK; then
-      echo "  [row $row] no attack surface -> full nuclei fallback sweep"
+      echo "  [row $row] no attack surface -> WebLogic high/critical fallback sweep"
       run_full_sweep "$url"
       local nhits=0; [[ -s "$result_file" ]] && nhits=$(wc -l < "$result_file" | tr -d ' ')
       echo "  [row $row] -> $nhits finding(s) (full fallback)"
