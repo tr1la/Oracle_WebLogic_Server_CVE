@@ -1,0 +1,38 @@
+{
+  "domain": "ssc.gov.vn",
+  "timestamp": "2026-10-19T08:13:35Z",
+  "total": 12,
+  "sources": {
+    "certspotter": {
+      "count": 1,
+      "duration_ms": 844
+    },
+    "crt.name": {
+      "count": 12,
+      "duration_ms": 944
+    },
+    "crt.sh": {
+      "count": 0,
+      "duration_ms": 941,
+      "error": "HTTP 502"
+    },
+    "shodan-ctl": {
+      "count": 0,
+      "duration_ms": 260
+    }
+  },
+  "subdomains": [
+    "autodiscover.ssc.gov.vn",
+    "congbothongtin.ssc.gov.vn",
+    "dichvucong.ssc.gov.vn",
+    "fms.ssc.gov.vn",
+    "ids.ssc.gov.vn",
+    "mail.ssc.gov.vn",
+    "owa.ssc.gov.vn",
+    "scms.ssc.gov.vn",
+    "smtp.ssc.gov.vn",
+    "ssc.gov.vn",
+    "tapchichungkhoan.ssc.gov.vn",
+    "www.ssc.gov.vn"
+  ]
+}
